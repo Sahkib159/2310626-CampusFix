@@ -1,33 +1,127 @@
-# FastAPI + React Template
+# CampusFix — Campus Service Request Management System
 
-FastAPI backend + Vite/React/TypeScript frontend, deployed to Vercel as one project.
+CampusFix is a web-based campus service request management system designed to help students report campus service issues and enable authorized staff to manage, assign, track, and resolve them.
 
-```
-backend/    FastAPI app (routes under /api)
-frontend/   Vite + React + TypeScript
-vercel.json Vercel setup: /api/* goes to backend, everything else to frontend
-```
+The project is being developed as part of a university software engineering course using React.js with TypeScript, FastAPI with Python, and REST APIs.
 
-## Requirements
+> **Project status:** Documentation and planning. Features listed below are planned requirements and should not be considered implemented until verified.
 
-- [Python](https://www.python.org/downloads/) 3.10+
-- [Node.js](https://nodejs.org/) 22+
+## Documentation
 
-> On macOS/Linux, use `python3` instead of `python`.
+| Document                                                    | Description                                                                                     |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [Product Requirements Document (PRD)](docs/01-prd.md)       | Project goals, scope, target users, priorities, and release plan                                |
+| [Software Requirements Specification (SRS)](docs/02-srs.md) | Functional requirements, non-functional requirements, user roles, APIs, and acceptance criteria |
+| [Technical Design Document (TDD)](docs/03-tdd.md)           | System architecture, database design, API design, security, testing, and deployment             |
 
-## Run locally
+## Project Goals
 
-**Backend** (terminal 1):
+* Provide a structured process for submitting campus service requests.
+* Allow students to track the progress of their requests.
+* Enable service staff to process assigned requests and document resolutions.
+* Provide administrators with request assignment and management capabilities.
+* Apply authentication, authorization, role-based access control (RBAC), and permission scopes in the final release.
+
+## Release Plan
+
+### MVP — Mid-term Release
+
+The MVP focuses on the core functionality required to demonstrate the system locally.
+
+Planned features:
+
+* Create, view, update, and delete service requests through REST APIs.
+* Create and manage service categories.
+* Validate request data and handle errors.
+* Integrate the React frontend with the FastAPI backend.
+* Run the application locally.
+
+### Beta — Final Release
+
+The Beta expands the MVP with security and role-specific functionality.
+
+Planned features:
+
+* User authentication and authorization.
+* Role-based access control for students, service staff, and administrators.
+* Permission scopes and resource-level access checks.
+* Student request tracking and cancellation of eligible pending requests.
+* Staff assignment, status updates, and resolution notes.
+* Administrative management of users and categories.
+* Role-specific dashboards.
+* Security testing and deployment.
+
+## Technology Stack
+
+| Technology          | Purpose                           |
+| ------------------- | --------------------------------- |
+| React.js            | Frontend user interface           |
+| TypeScript          | Frontend development              |
+| FastAPI             | Python backend and REST APIs      |
+| Pydantic            | Request and response validation   |
+| SQLAlchemy          | Database access, if adopted       |
+| SQLite / PostgreSQL | Relational database options       |
+| Pytest              | Backend testing                   |
+| Git and GitHub      | Version control and collaboration |
+
+The final database and dependency versions will be confirmed during implementation.
+
+## User Roles
+
+* **Student:** Submit service requests and, in Beta, track and manage eligible requests.
+* **Service Staff:** View assigned requests, update progress, and add resolution notes.
+* **Administrator:** Assign requests, manage users and categories, and access authorized administrative functions.
+
+## Planned Request Lifecycle
+
+`PENDING → ASSIGNED → IN PROGRESS → RESOLVED`
+
+Eligible pending requests may also be cancelled:
+
+`PENDING → CANCELLED`
+
+The backend will enforce valid status transitions and role-specific permissions in the Beta release.
+
+## Getting Started
+
+The application setup instructions will be completed alongside implementation. The commands below are illustrative and may need to be adjusted to match the final repository structure.
+
+### Prerequisites
+
+* Python
+* Node.js and npm
+* Git
+
+### Backend
+
+After the FastAPI backend and its dependency file have been implemented:
 
 ```bash
 cd backend
 python -m venv .venv
-.venv\Scripts\Activate.ps1      # macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-fastapi dev main.py
 ```
 
-**Frontend** (terminal 2):
+Activate the virtual environment on Windows:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+Install the project's dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Start the backend using the entry point configured by the project. For example, if the application is exposed as `app.main:app`:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+### Frontend
+
+After the React application has been configured:
 
 ```bash
 cd frontend
@@ -35,38 +129,32 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 and click **Say hello**. Vite forwards `/api` requests to the backend on port 8000.
+Check the frontend and backend configuration for the correct API URL before running the application.
 
-To run it the way Vercel does instead, from the project root:
+### API Documentation
 
-```bash
-npm install -g vercel
-vercel dev -L
-```
+FastAPI normally provides interactive API documentation at:
 
-> Add new Python packages to `backend/requirements.txt`.
+`http://127.0.0.1:8000/docs`
 
-## Class exercise
+This URL will be available when the backend is running and its API documentation is enabled.
 
-Send an ID, name and email from React to FastAPI and show the reply.
+## Development Workflow
 
-1. In `backend/main.py`, uncomment the `EXERCISE (part 1)` block. Try `POST /api/user` at http://localhost:8000/docs.
-2. In `frontend/src/App.tsx`, uncomment `<UserForm />` and the `UserForm` function (`EXERCISE (part 2)`).
-3. Fill in the form at http://localhost:5173 and click **Send**.
+CampusFix uses an issue-based GitHub workflow:
 
-Try an invalid email (send it from `/docs`, since the browser blocks it in the form): FastAPI returns `422` without any extra code.
+1. Create a GitHub issue describing the task.
+2. Create a feature branch linked to the issue.
+3. Implement the changes and test them.
+4. Commit changes with descriptive messages.
+5. Open a pull request targeting `main`.
+6. Reference the issue using `Closes #issue_number` in the pull request description.
+7. Review and merge the pull request.
 
-## Deploy to Vercel
+## Project Scope
 
-1. Push the repo to GitHub.
-2. Go to https://vercel.com/new, import the repo and click **Deploy**. Keep **Root Directory** as `./`.
+CampusFix focuses on campus service request management. AI/ML features, chatbots, payment processing, native mobile applications, and complex external integrations are outside the planned MVP and Beta scope.
 
-Every push to `main` redeploys automatically. Or deploy from your machine with `vercel --prod`.
+## Academic Project
 
-## Troubleshooting
-
-- **"Running scripts is disabled" in PowerShell:** run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
-- **`fastapi` not found:** activate the virtual environment first.
-- **`Request failed: 500` in the app:** the backend isn't running.
-- **App at localhost:8000 shows an old version:** delete `frontend/dist`.
-- **Vercel build fails:** check **Build Logs** in the Vercel dashboard, and make sure `npm run build` works in `frontend/`.
+CampusFix is an academic software engineering project. Its requirements and technical design may be refined based on faculty feedback and implementation findings.
