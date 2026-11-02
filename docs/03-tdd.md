@@ -299,7 +299,7 @@ The database shall enforce valid foreign-key relationships. Status values shall 
 | POST   | `/api/requests`                 | Create a request                 |
 | GET    | `/api/requests`                 | List requests                    |
 | GET    | `/api/requests/{request_id}`    | Retrieve one request             |
-| PATCH  | `/api/requests/{request_id}`    | Update permitted fields          |
+| PUT  | `/api/requests/{request_id}`    | Update the request         |
 | DELETE | `/api/requests/{request_id}`    | Delete a request under MVP rules |
 | GET    | `/api/categories`               | List categories                  |
 | POST   | `/api/categories`               | Create a category                |
