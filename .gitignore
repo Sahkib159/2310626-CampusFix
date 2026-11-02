@@ -7,8 +7,15 @@ __pycache__/
 node_modules/
 frontend/dist/
 
+
 # Env / tooling
 .env
+.env.*
+!.env.example
+backend/.env
 .vercel/
-.vscode/*
-!.vscode/extensions.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
