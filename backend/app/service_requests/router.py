@@ -1,11 +1,10 @@
-
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
-from backend.database import get_session
-from backend.app import schemas
-from backend.app.models.service_request import ServiceRequest
-from backend.app.service_requests import service
+from database import get_session
+from app import schemas
+from app.models.service_request import ServiceRequest
+from app.service_requests import service
 
 
 router = APIRouter(

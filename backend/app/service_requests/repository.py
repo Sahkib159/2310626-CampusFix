@@ -1,7 +1,6 @@
-
 from sqlmodel import Session, select
 
-from backend.app.models.service_request import ServiceRequest
+from app.models.service_request import ServiceRequest
 
 
 def create_request(

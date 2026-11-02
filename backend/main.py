@@ -1,12 +1,11 @@
-
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 
-from backend.database import engine
-from backend.app.models.service_request import ServiceRequest
-from backend.app.service_requests.router import router as request_router
+from database import engine
+from app.models.service_request import ServiceRequest
+from app.service_requests.router import router as request_router
 
 
 @asynccontextmanager
