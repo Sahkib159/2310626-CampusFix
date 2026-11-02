@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
+
 from fastapi import HTTPException
 from sqlmodel import Session
 
-from backend.app import schemas
-from backend.app.models.service_request import ServiceRequest
-from backend.app.service_requests import repository
+from app import schemas
+from app.models.service_request import ServiceRequest
+from app.service_requests import repository
 
 
 def create_request(
