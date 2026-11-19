@@ -1,5 +1,6 @@
 
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -28,7 +29,13 @@ class ServiceRequestUpdate(BaseModel):
 
 class ServiceRequestResponse(BaseModel):
     id: int
+    user_id: UUID | None = None
+    assigned_to: UUID | None = None
     title: str
     description: str
     category: str
     status: RequestStatus
+
+
+class AssignStaffRequest(BaseModel):
+    staff_id: str = Field(min_length=1)

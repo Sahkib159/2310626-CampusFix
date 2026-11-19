@@ -2,11 +2,13 @@
 import { useEffect, useState } from "react"
 import { Link, useParams } from "react-router"
 
+import { useAuth } from "../contexts/AuthContext"
 import { getRequestById } from "../services/api"
 import type { ServiceRequest } from "../types/request"
 
 export default function RequestDetailsPage() {
   const { id } = useParams<{ id: string }>()
+  const { accessToken } = useAuth()
 
   const [request, setRequest] = useState<ServiceRequest | null>(null)
   const [loading, setLoading] = useState(true)
@@ -16,6 +18,12 @@ export default function RequestDetailsPage() {
     let cancelled = false
 
     async function loadRequest() {
+      if (!accessToken) {
+        setError("Your session has expired. Please log in again.")
+        setLoading(false)
+        return
+      }
+
       if (!id || !/^\d+$/.test(id) || Number(id) < 1) {
         setError("Invalid service request ID.")
         setLoading(false)
@@ -26,7 +34,7 @@ export default function RequestDetailsPage() {
         setLoading(true)
         setError("")
 
-        const data = await getRequestById(Number(id))
+        const data = await getRequestById(Number(id), accessToken)
 
         if (!cancelled) {
           setRequest(data)
@@ -51,7 +59,7 @@ export default function RequestDetailsPage() {
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, accessToken])
 
   return (
     <main className="app">

@@ -4,7 +4,7 @@ CampusFix is a web-based campus service request management system designed to he
 
 The project is being developed as part of a university software engineering course using React.js with TypeScript, FastAPI with Python, and REST APIs.
 
-> **Project status:** Documentation and planning. Features listed below are planned requirements and should not be considered implemented until verified.
+> **Project status:** Beta implementation in progress. Authentication, role-based request access, and staff assignment workflows have been implemented. Additional verification and integration work is ongoing.
 
 ## Documentation
 
@@ -82,62 +82,88 @@ Eligible pending requests may also be cancelled:
 
 The backend will enforce valid status transitions and role-specific permissions in the Beta release.
 
+
 ## Getting Started
 
-The application setup instructions will be completed alongside implementation. The commands below are illustrative and may need to be adjusted to match the final repository structure.
+Follow these instructions to run CampusFix locally.
 
 ### Prerequisites
 
-* Python
-* Node.js and npm
-* Git
+- Python 3.10+
+- Node.js and npm
+- Git
+- A PostgreSQL database (local PostgreSQL or Supabase)
 
-### Backend
-
-After the FastAPI backend and its dependency file have been implemented:
-
-```bash
-cd backend
-python -m venv .venv
-```
-
-Activate the virtual environment on Windows:
+### 1. Clone the Repository
 
 ```powershell
-.venv\Scripts\Activate.ps1
+git clone https://github.com/Sahkib159/2310626-CampusFix.git
+cd 2310626-CampusFix
 ```
 
-Install the project's dependencies:
+### 2. Backend Setup
 
-```bash
+Create and activate a Python virtual environment from the project root:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Install backend dependencies and configure environment variables:
+
+```powershell
+cd backend
 pip install -r requirements.txt
+
+if (!(Test-Path .env)) {
+    Copy-Item .env.example .env
+}
 ```
 
-Start the backend using the entry point configured by the project. For example, if the application is exposed as `app.main:app`:
+Edit `backend/.env` and provide your PostgreSQL database URL and a secure JWT secret key.
 
-```bash
-uvicorn app.main:app --reload
+Apply database migrations:
+
+```powershell
+alembic upgrade head
 ```
 
-### Frontend
+Start the backend server:
 
-After the React application has been configured:
+```powershell
+uvicorn main:app --reload
+```
 
-```bash
+The backend will be available at:
+
+- API: `http://127.0.0.1:8000`
+- API documentation: `http://127.0.0.1:8000/api/docs`
+
+### 3. Frontend Setup
+
+Open a second terminal from the project root:
+
+```powershell
 cd frontend
 npm install
 npm run dev
 ```
 
-Check the frontend and backend configuration for the correct API URL before running the application.
+Open the local URL displayed by Vite in your terminal.
 
-### API Documentation
+### 4. Environment Configuration
 
-FastAPI normally provides interactive API documentation at:
+The backend uses `backend/.env` for database and authentication configuration.
 
-`http://127.0.0.1:8000/docs`
+A template is provided in `backend/.env.example`. Never commit your actual `.env` file or expose database credentials and secret keys.
 
-This URL will be available when the backend is running and its API documentation is enabled.
+### 5. Database and Account Setup
+
+Run database migrations before starting the application.
+
+Public registration creates student accounts. Staff and administrator accounts must be provisioned through the backend's account creation scripts.
+
 
 ## Development Workflow
 
