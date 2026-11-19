@@ -1,0 +1,169 @@
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlmodel import Session
+
+from database import get_session
+from app.models.user import User
+from app.auth import schemas, service
+from app.auth.config import (
+    REFRESH_COOKIE_NAME,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    COOKIE_SECURE,
+    COOKIE_SAMESITE,
+)
+from app.auth.dependencies import get_current_user
+
+
+router = APIRouter(
+    prefix="/api/auth",
+    tags=["Authentication"],
+)
+
+
+def set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    response.set_cookie(
+        key=REFRESH_COOKIE_NAME,
+        value=refresh_token,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/api/auth",
+    )
+
+
+@router.post(
+    "/signup",
+    response_model=schemas.TokenResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def signup(
+    data: schemas.SignupRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+):
+    try:
+        result = service.signup(session, data)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    set_refresh_cookie(response, result["refresh_token"])
+    return result["response"]
+
+
+@router.post(
+    "/login",
+    response_model=schemas.TokenResponse,
+)
+def login(
+    data: schemas.LoginRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+):
+    try:
+        result = service.login(session, data)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        )
+
+    set_refresh_cookie(response, result["refresh_token"])
+    return result["response"]
+
+
+@router.post(
+    "/refresh",
+    response_model=schemas.TokenResponse,
+)
+def refresh(
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+):
+    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token is missing.",
+        )
+
+    try:
+        result = service.refresh_session(session, refresh_token)
+    except ValueError as exc:
+        response.delete_cookie(
+            key=REFRESH_COOKIE_NAME,
+            path="/api/auth",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        )
+
+    set_refresh_cookie(response, result["refresh_token"])
+    return result["response"]
+
+
+@router.post("/logout")
+def logout(
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+):
+    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+
+    if refresh_token:
+        service.logout(session, refresh_token)
+
+    response.delete_cookie(
+        key=REFRESH_COOKIE_NAME,
+        path="/api/auth",
+    )
+
+    return {"message": "Logged out successfully."}
+
+
+@router.get(
+    "/me",
+    response_model=schemas.UserResponse,
+)
+def get_me(
+    current_user: User = Depends(get_current_user),
+):
+    return schemas.UserResponse(
+        id=str(current_user.id),
+        name=current_user.name,
+        email=current_user.email,
+        role=current_user.role,
+    )
+
+
+@router.get("/sessions")
+def get_sessions(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    return service.get_user_sessions(session, current_user.id)
+
+
+@router.delete("/sessions/{session_id}")
+def revoke_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    try:
+        return service.revoke_user_session(
+            session,
+            current_user.id,
+            session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
