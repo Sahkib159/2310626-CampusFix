@@ -71,10 +71,10 @@ def revoke_refresh_family(
         RefreshSession.revoked_at.is_(None),
     )
 
-    sessions = session.exec(statement).all()
+    refresh_sessions = session.exec(statement).all()
     now = datetime.now(timezone.utc)
 
-    for refresh_session in sessions:
+    for refresh_session in refresh_sessions:
         refresh_session.revoked_at = now
         session.add(refresh_session)
 
@@ -99,8 +99,9 @@ def revoke_user_session(
     user_id: UUID,
     session_id: UUID,
 ) -> bool:
+    # session_id represents the login session's family_id.
     statement = select(RefreshSession).where(
-        RefreshSession.id == session_id,
+        RefreshSession.family_id == session_id,
         RefreshSession.user_id == user_id,
     )
 
@@ -109,9 +110,7 @@ def revoke_user_session(
     if refresh_session is None:
         return False
 
-    if refresh_session.revoked_at is None:
-        refresh_session.revoked_at = datetime.now(timezone.utc)
-        session.add(refresh_session)
-        session.commit()
+    # Revoke every refresh token belonging to this login session.
+    revoke_refresh_family(session, session_id)
 
     return True

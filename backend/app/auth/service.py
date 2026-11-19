@@ -120,6 +120,7 @@ def refresh_session(
     if stored_session is None:
         raise ValueError("Invalid refresh token.")
 
+    # Reusing a revoked token invalidates the entire login session.
     if stored_session.revoked_at is not None:
         repository.revoke_refresh_family(
             session,
@@ -134,7 +135,10 @@ def refresh_session(
         expires_at = expires_at.replace(tzinfo=timezone.utc)
 
     if expires_at <= now:
-        repository.revoke_refresh_session(session, stored_session)
+        repository.revoke_refresh_family(
+            session,
+            stored_session.family_id,
+        )
         raise ValueError("Refresh token has expired.")
 
     user = repository.get_user_by_id(
@@ -147,7 +151,11 @@ def refresh_session(
 
     family_id = stored_session.family_id
 
-    repository.revoke_refresh_session(session, stored_session)
+    # Rotate the refresh token: invalidate the old token first.
+    repository.revoke_refresh_session(
+        session,
+        stored_session,
+    )
 
     new_refresh_token = _create_refresh_session(
         session,
@@ -170,25 +178,60 @@ def logout(
         hash_refresh_token(raw_token),
     )
 
-    if stored_session is not None and stored_session.revoked_at is None:
-        repository.revoke_refresh_session(session, stored_session)
+    if stored_session is not None:
+        # Logout invalidates the complete login session.
+        repository.revoke_refresh_family(
+            session,
+            stored_session.family_id,
+        )
 
 
 def get_user_sessions(
     session: Session,
     user_id: UUID,
 ) -> list[dict]:
-    sessions = repository.get_user_sessions(session, user_id)
+    refresh_sessions = repository.get_user_sessions(
+        session,
+        user_id,
+    )
 
-    return [
-        {
-            "id": str(item.id),
-            "created_at": item.created_at,
-            "expires_at": item.expires_at,
-            "revoked": item.revoked_at is not None,
-        }
-        for item in sessions
-    ]
+    # Group rotated refresh-token records by login session.
+    families: dict[UUID, list[RefreshSession]] = {}
+
+    for item in refresh_sessions:
+        families.setdefault(item.family_id, []).append(item)
+
+    result = []
+
+    for family_id, family_tokens in families.items():
+        created_at = min(
+            item.created_at for item in family_tokens
+        )
+
+        expires_at = max(
+            item.expires_at for item in family_tokens
+        )
+
+        revoked = all(
+            item.revoked_at is not None
+            for item in family_tokens
+        )
+
+        result.append(
+            {
+                "id": str(family_id),
+                "created_at": created_at,
+                "expires_at": expires_at,
+                "revoked": revoked,
+            }
+        )
+
+    result.sort(
+        key=lambda item: item["created_at"],
+        reverse=True,
+    )
+
+    return result
 
 
 def revoke_user_session(
