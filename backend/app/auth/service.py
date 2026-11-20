@@ -1,5 +1,5 @@
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -10,7 +10,11 @@ from app.models.refresh_session import RefreshSession
 from app.auth import repository
 from app.auth import schemas
 from app.auth.config import REFRESH_TOKEN_EXPIRE
-from app.auth.password import hash_password, verify_password
+from app.auth.password import (
+    hash_password,
+    verify_password,
+    needs_password_upgrade,
+)
 from app.auth.jwt import create_access_token
 from app.auth.tokens import (
     generate_refresh_token,
@@ -18,9 +22,22 @@ from app.auth.tokens import (
 )
 
 
+# Login rate-limit configuration
+LOGIN_ATTEMPT_WINDOW_MINUTES = 15
+MAX_FAILED_ATTEMPTS_PER_EMAIL = 5
+MAX_FAILED_ATTEMPTS_PER_IP = 20
+
+
+class LoginRateLimitError(ValueError):
+    """Raised when a login rate limit has been reached."""
+
+
 def _build_token_response(user: User) -> schemas.TokenResponse:
     return schemas.TokenResponse(
-        access_token=create_access_token(user.id),
+        access_token=create_access_token(
+            user.id,
+            user.role,
+        ),
         user=schemas.UserResponse(
             id=str(user.id),
             name=user.name,
@@ -59,9 +76,11 @@ def signup(
     session: Session,
     data: schemas.SignupRequest,
 ) -> dict:
+    email = str(data.email).strip().lower()
+
     existing_user = repository.get_user_by_email(
         session,
-        data.email,
+        email,
     )
 
     if existing_user is not None:
@@ -69,9 +88,10 @@ def signup(
 
     user = User(
         name=data.name,
-        email=data.email,
+        email=email,
         password_hash=hash_password(data.password),
         role="STUDENT",
+        is_active=True,
     )
 
     user = repository.create_user(session, user)
@@ -87,17 +107,86 @@ def signup(
 def login(
     session: Session,
     data: schemas.LoginRequest,
+    ip_address: str,
 ) -> dict:
-    user = repository.get_user_by_email(
-        session,
-        data.email,
+    email = str(data.email).strip().lower()
+    now = datetime.now(timezone.utc)
+
+    window_start = now - timedelta(
+        minutes=LOGIN_ATTEMPT_WINDOW_MINUTES
     )
 
-    if user is None or not verify_password(
-        data.password,
-        user.password_hash,
+    # Check email-based rate limit.
+    email_failures = (
+        repository.count_failed_login_attempts_by_email(
+            session,
+            email,
+            window_start,
+        )
+    )
+
+    # Check IP-based rate limit.
+    ip_failures = (
+        repository.count_failed_login_attempts_by_ip(
+            session,
+            ip_address,
+            window_start,
+        )
+    )
+
+    if (
+        email_failures >= MAX_FAILED_ATTEMPTS_PER_EMAIL
+        or ip_failures >= MAX_FAILED_ATTEMPTS_PER_IP
     ):
+        raise LoginRateLimitError(
+            "Too many login attempts. Please try again later."
+        )
+
+    user = repository.get_user_by_email(
+        session,
+        email,
+    )
+
+    # Verify credentials and account status.
+    credentials_valid = (
+        user is not None
+        and verify_password(
+            data.password,
+            user.password_hash,
+        )
+    )
+
+    account_active = (
+        user is not None
+        and user.is_active
+    )
+
+    if not credentials_valid or not account_active:
+        repository.record_login_attempt(
+            session,
+            email,
+            ip_address,
+            successful=False,
+        )
+
         raise ValueError("Incorrect email or password.")
+
+    # Upgrade legacy passwords after successful verification.
+    if needs_password_upgrade(user.password_hash):
+        user.password_hash = hash_password(data.password)
+        user.updated_at = datetime.now(timezone.utc)
+
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+    # Record successful login.
+    repository.record_login_attempt(
+        session,
+        email,
+        ip_address,
+        successful=True,
+    )
 
     refresh_token = _create_refresh_session(session, user)
 
@@ -227,6 +316,13 @@ def refresh_session(
 
     if user is None:
         raise ValueError("User account not found.")
+
+    if not user.is_active:
+        repository.revoke_refresh_family(
+            session,
+            stored_session.family_id,
+        )
+        raise ValueError("This account is inactive or banned.")
 
     family_id = stored_session.family_id
 

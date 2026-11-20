@@ -1,5 +1,5 @@
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -12,9 +12,9 @@ from app.auth.config import (
 )
 
 
-def create_access_token(user_id: UUID) -> str:
+def create_access_token(user_id: UUID, role: str) -> str:
     """
-    Generate a signed JWT access token for a user.
+    Generate a signed JWT access token containing user ID and role.
     """
 
     now = datetime.now(timezone.utc)
@@ -22,6 +22,7 @@ def create_access_token(user_id: UUID) -> str:
 
     payload = {
         "sub": str(user_id),
+        "role": role,
         "type": "access",
         "iat": now,
         "exp": expires_at,
@@ -48,6 +49,16 @@ def decode_access_token(token: str) -> dict[str, Any]:
     if payload.get("type") != "access":
         raise jwt.InvalidTokenError(
             "Invalid token type."
+        )
+
+    if not payload.get("sub"):
+        raise jwt.InvalidTokenError(
+            "Token is missing the user ID."
+        )
+
+    if not payload.get("role"):
+        raise jwt.InvalidTokenError(
+            "Token is missing the user role."
         )
 
     return payload

@@ -6,7 +6,12 @@ from sqlmodel import Session, select
 
 from app.models.user import User
 from app.models.refresh_session import RefreshSession
+from app.models.login_attempt import LoginAttempt
 
+
+# --------------------------------------------------
+# USER OPERATIONS
+# --------------------------------------------------
 
 def get_user_by_email(
     session: Session,
@@ -44,6 +49,10 @@ def create_user(
     session.refresh(user)
     return user
 
+
+# --------------------------------------------------
+# REFRESH SESSION OPERATIONS
+# --------------------------------------------------
 
 def create_refresh_session(
     session: Session,
@@ -126,3 +135,61 @@ def revoke_user_session(
     revoke_refresh_family(session, session_id)
 
     return True
+
+
+# --------------------------------------------------
+# LOGIN ATTEMPT OPERATIONS
+# --------------------------------------------------
+
+def record_login_attempt(
+    session: Session,
+    email: str,
+    ip_address: str,
+    successful: bool,
+) -> LoginAttempt:
+    """Persist one successful or failed login attempt."""
+
+    attempt = LoginAttempt(
+        email=email.strip().lower(),
+        ip_address=ip_address,
+        successful=successful,
+        attempted_at=datetime.now(timezone.utc),
+    )
+
+    session.add(attempt)
+    session.commit()
+    session.refresh(attempt)
+
+    return attempt
+
+
+def count_failed_login_attempts_by_email(
+    session: Session,
+    email: str,
+    since: datetime,
+) -> int:
+    """Count failed login attempts for an email since a given time."""
+
+    statement = select(LoginAttempt).where(
+        LoginAttempt.email == email.strip().lower(),
+        LoginAttempt.successful.is_(False),
+        LoginAttempt.attempted_at >= since,
+    )
+
+    return len(session.exec(statement).all())
+
+
+def count_failed_login_attempts_by_ip(
+    session: Session,
+    ip_address: str,
+    since: datetime,
+) -> int:
+    """Count failed login attempts from an IP since a given time."""
+
+    statement = select(LoginAttempt).where(
+        LoginAttempt.ip_address == ip_address,
+        LoginAttempt.successful.is_(False),
+        LoginAttempt.attempted_at >= since,
+    )
+
+    return len(session.exec(statement).all())
