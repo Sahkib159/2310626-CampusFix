@@ -10,6 +10,7 @@ from sqlmodel import SQLModel, Session, create_engine
 from app.models.user import User
 from app.models.service_request import ServiceRequest
 from app.service_requests.router import router as request_router
+from app.staff.router import router as staff_router
 from app.auth.dependencies import get_current_user
 from database import get_session
 
@@ -26,6 +27,7 @@ class ServiceRequestAuthorizationTests(unittest.TestCase):
 
         cls.app = FastAPI()
         cls.app.include_router(request_router)
+        cls.app.include_router(staff_router)
         cls.current_user_id = None
 
         def override_get_current_user():
@@ -289,6 +291,13 @@ class ServiceRequestAuthorizationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_student_cannot_access_staff_endpoint(self):
+        self.login_as(self.student_a_id)
+
+        response = self.client.get("/api/staff")
+
+        self.assertEqual(response.status_code, 403)
+
     def test_student_cannot_assign_staff(self):
         self.login_as(self.student_a_id)
 
@@ -318,6 +327,24 @@ class ServiceRequestAuthorizationTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+
+    def test_admin_can_unassign_staff(self):
+        self.login_as(self.admin_id)
+
+        response = self.client.delete(
+            f"/api/requests/{self.request_a_id}/assign"
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        with Session(self.engine) as session:
+            request = session.get(
+                ServiceRequest,
+                self.request_a_id,
+            )
+
+        self.assertIsNone(request.assigned_to)
+        self.assertEqual(request.status, "pending")
 
     def test_admin_can_delete_another_student_request(self):
         self.login_as(self.admin_id)
