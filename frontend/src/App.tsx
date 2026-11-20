@@ -13,6 +13,7 @@ import HomePage from "./pages/HomePage"
 import RequestDetailsPage from "./pages/RequestDetailsPage"
 import LoginPage from "./pages/LoginPage"
 import SignupPage from "./pages/SignupPage"
+import ProfilePage from "./pages/ProfilePage"
 
 function ProtectedRoute() {
   const { user, loading } = useAuth()
@@ -39,6 +40,7 @@ export default function App() {
         {/* Protected application pages */}
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route
             path="/requests/:id"
             element={<RequestDetailsPage />}
