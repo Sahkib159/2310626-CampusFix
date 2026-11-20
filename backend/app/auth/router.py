@@ -1,4 +1,7 @@
 
+import os
+from ipaddress import ip_address
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlmodel import Session
 
@@ -15,6 +18,30 @@ from app.auth.dependencies import get_current_user
 
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+
+
+def get_client_ip(request: Request) -> str:
+    """
+    Get the client's IP address.
+
+    On Vercel, use the platform-provided X-Forwarded-For header.
+    Locally, use the direct client address.
+
+    The forwarded IP is validated before being used.
+    """
+    if os.getenv("VERCEL") == "1":
+        forwarded_ip = request.headers.get("x-forwarded-for")
+
+        try:
+            return str(ip_address(forwarded_ip.strip()))
+        except (ValueError, AttributeError):
+            return "unknown"
+
+    return (
+        request.client.host
+        if request.client is not None
+        else "unknown"
+    )
 
 
 def set_refresh_cookie(response: Response, refresh_token: str) -> None:
@@ -54,11 +81,25 @@ def signup(
 @router.post("/login", response_model=schemas.TokenResponse)
 def login(
     data: schemas.LoginRequest,
+    request: Request,
     response: Response,
     session: Session = Depends(get_session),
 ):
+    client_ip = get_client_ip(request)
+
     try:
-        result = service.login(session, data)
+        result = service.login(
+            session,
+            data,
+            client_ip,
+        )
+
+    except service.LoginRateLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        )
+
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -17,6 +17,7 @@ from sqlmodel import SQLModel
 from app.models.service_request import ServiceRequest
 from app.models.user import User
 from app.models.refresh_session import RefreshSession
+from app.models.login_attempt import LoginAttempt
 
 config = context.config
 
@@ -24,7 +25,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Use the database URL from backend/.env.
-config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
+config.set_main_option(
+    "sqlalchemy.url",
+    DATABASE_URL.replace("%", "%%"),
+)
 
 # Load all registered SQLModel metadata.
 target_metadata = SQLModel.metadata
