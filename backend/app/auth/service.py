@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.models.user import User
@@ -104,6 +105,84 @@ def login(
         "response": _build_token_response(user),
         "refresh_token": refresh_token,
     }
+
+
+def update_user_profile(
+    session: Session,
+    current_user: User,
+    data: schemas.ProfileUpdateRequest,
+) -> User:
+    if data.name is not None:
+        current_user.name = data.name
+
+    if data.email is not None:
+        new_email = str(data.email).strip().lower()
+
+        if new_email != current_user.email:
+            if data.current_password is None or not verify_password(
+                data.current_password,
+                current_user.password_hash,
+            ):
+                raise ValueError("Current password is incorrect.")
+
+            existing_user = repository.get_user_by_email_excluding_id(
+                session,
+                new_email,
+                current_user.id,
+            )
+
+            if existing_user is not None:
+                raise ValueError(
+                    "An account with this email already exists."
+                )
+
+            current_user.email = new_email
+
+    current_user.updated_at = datetime.now(timezone.utc)
+
+    try:
+        session.add(current_user)
+        session.commit()
+        session.refresh(current_user)
+
+    except IntegrityError:
+        session.rollback()
+        raise ValueError(
+            "An account with this email already exists."
+        )
+
+    return current_user
+
+
+def change_user_password(
+    session: Session,
+    current_user: User,
+    data: schemas.PasswordChangeRequest,
+) -> None:
+    if not verify_password(
+        data.current_password,
+        current_user.password_hash,
+    ):
+        raise ValueError("Current password is incorrect.")
+
+    current_user.password_hash = hash_password(data.new_password)
+    current_user.updated_at = datetime.now(timezone.utc)
+
+    session.add(current_user)
+    session.commit()
+
+    # Revoke every refresh-token family belonging to this user.
+    refresh_sessions = repository.get_user_sessions(
+        session,
+        current_user.id,
+    )
+
+    family_ids = {
+        item.family_id for item in refresh_sessions
+    }
+
+    for family_id in family_ids:
+        repository.revoke_refresh_family(session, family_id)
 
 
 def refresh_session(

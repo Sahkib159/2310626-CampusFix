@@ -14,10 +14,7 @@ from app.auth.config import (
 from app.auth.dependencies import get_current_user
 
 
-router = APIRouter(
-    prefix="/api/auth",
-    tags=["Authentication"],
-)
+router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 
 def set_refresh_cookie(response: Response, refresh_token: str) -> None:
@@ -54,10 +51,7 @@ def signup(
     return result["response"]
 
 
-@router.post(
-    "/login",
-    response_model=schemas.TokenResponse,
-)
+@router.post("/login", response_model=schemas.TokenResponse)
 def login(
     data: schemas.LoginRequest,
     response: Response,
@@ -75,10 +69,7 @@ def login(
     return result["response"]
 
 
-@router.post(
-    "/refresh",
-    response_model=schemas.TokenResponse,
-)
+@router.post("/refresh", response_model=schemas.TokenResponse)
 def refresh(
     request: Request,
     response: Response,
@@ -127,10 +118,7 @@ def logout(
     return {"message": "Logged out successfully."}
 
 
-@router.get(
-    "/me",
-    response_model=schemas.UserResponse,
-)
+@router.get("/me", response_model=schemas.UserResponse)
 def get_me(
     current_user: User = Depends(get_current_user),
 ):
@@ -140,6 +128,61 @@ def get_me(
         email=current_user.email,
         role=current_user.role,
     )
+
+
+@router.patch("/me", response_model=schemas.UserResponse)
+def update_me(
+    data: schemas.ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    try:
+        updated_user = service.update_user_profile(
+            session,
+            current_user,
+            data,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    return schemas.UserResponse(
+        id=str(updated_user.id),
+        name=updated_user.name,
+        email=updated_user.email,
+        role=updated_user.role,
+    )
+
+
+@router.post("/change-password")
+def change_password(
+    data: schemas.PasswordChangeRequest,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    try:
+        service.change_user_password(
+            session,
+            current_user,
+            data,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    response.delete_cookie(
+        key=REFRESH_COOKIE_NAME,
+        path="/api/auth",
+    )
+
+    return {
+        "message": "Password changed successfully. Please log in again."
+    }
 
 
 @router.get("/sessions")

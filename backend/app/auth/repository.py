@@ -16,6 +16,18 @@ def get_user_by_email(
     return session.exec(statement).first()
 
 
+def get_user_by_email_excluding_id(
+    session: Session,
+    email: str,
+    user_id: UUID,
+) -> User | None:
+    statement = select(User).where(
+        User.email == email,
+        User.id != user_id,
+    )
+    return session.exec(statement).first()
+
+
 def get_user_by_id(
     session: Session,
     user_id: UUID,

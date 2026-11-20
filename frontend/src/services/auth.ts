@@ -25,6 +25,17 @@ export interface LoginData {
   password: string
 }
 
+export interface ProfileUpdateData {
+  name?: string
+  email?: string
+  current_password?: string
+}
+
+export interface PasswordChangeData {
+  current_password: string
+  new_password: string
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let message = `Request failed (${response.status})`
@@ -105,4 +116,39 @@ export async function getCurrentUser(
   })
 
   return handleResponse<AuthUser>(response)
+}
+
+// Update the currently authenticated user's profile.
+export async function updateProfile(
+  data: ProfileUpdateData,
+  accessToken: string
+): Promise<AuthUser> {
+  const response = await fetch(`${API_URL}/me`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  })
+
+  return handleResponse<AuthUser>(response)
+}
+
+// Change the currently authenticated user's password.
+export async function changePassword(
+  data: PasswordChangeData,
+  accessToken: string
+): Promise<{ message: string }> {
+  const response = await fetch(`${API_URL}/change-password`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify(data),
+  })
+
+  return handleResponse<{ message: string }>(response)
 }

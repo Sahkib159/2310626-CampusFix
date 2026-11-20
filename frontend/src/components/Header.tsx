@@ -1,21 +1,22 @@
 
 import { useState } from "react"
-import { useNavigate } from "react-router"
+import { useNavigate, useLocation } from "react-router"
 import { useAuth } from "../contexts/AuthContext"
 
 type HeaderProps = {
-  onRefresh: () => void | Promise<void>
+  onRefresh?: () => void | Promise<void>
 }
 
 export default function Header({ onRefresh }: HeaderProps) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [refreshing, setRefreshing] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
 
   async function handleRefresh() {
-    if (refreshing) return
+    if (!onRefresh || refreshing) return
 
     setRefreshing(true)
 
@@ -47,7 +48,11 @@ export default function Header({ onRefresh }: HeaderProps) {
 
   return (
     <header className="dashboard-header">
-      <div className="dashboard-brand">
+      <div
+        className="dashboard-brand"
+        onClick={() => navigate("/")}
+        style={{ cursor: "pointer" }}
+      >
         <div className="dashboard-logo">C</div>
 
         <div>
@@ -70,14 +75,25 @@ export default function Header({ onRefresh }: HeaderProps) {
 
         <button
           className="dashboard-refresh"
-          onClick={() => void handleRefresh()}
-          disabled={refreshing || loggingOut}
+          onClick={() => navigate("/profile")}
+          disabled={loggingOut}
+          aria-current={location.pathname === "/profile" ? "page" : undefined}
         >
-          <span className={refreshing ? "refresh-icon spinning" : "refresh-icon"}>
-            ↻
-          </span>
-          {refreshing ? "Refreshing..." : "Refresh"}
+          Profile
         </button>
+
+        {onRefresh && (
+          <button
+            className="dashboard-refresh"
+            onClick={() => void handleRefresh()}
+            disabled={refreshing || loggingOut}
+          >
+            <span className={refreshing ? "refresh-icon spinning" : "refresh-icon"}>
+              ↻
+            </span>
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        )}
 
         <button
           className="dashboard-logout"
