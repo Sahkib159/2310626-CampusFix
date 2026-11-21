@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, Session, create_engine
 
 from app.models.user import User
+from app.models.group import Group, GroupMember
 from app.models.service_request import ServiceRequest
 from app.service_requests.router import router as request_router
 from app.staff.router import router as staff_router
@@ -72,6 +73,10 @@ class ServiceRequestAuthorizationTests(unittest.TestCase):
 
         self.request_a_id = 1
         self.request_b_id = 2
+        self.active_group_id = uuid4()
+        self.archived_group_id = uuid4()
+        self.active_group_request_id = 3
+        self.archived_group_request_id = 4
 
         users = [
             User(
@@ -113,6 +118,79 @@ class ServiceRequestAuthorizationTests(unittest.TestCase):
 
         with Session(self.engine) as session:
             session.add_all(users)
+            session.commit()
+
+            active_group = Group(
+                id=self.active_group_id,
+                name="Active Group",
+                description="Active test group",
+                owner_id=self.student_a_id,
+                is_archived=False,
+            )
+
+            archived_group = Group(
+                id=self.archived_group_id,
+                name="Archived Group",
+                description="Archived test group",
+                owner_id=self.student_a_id,
+                is_archived=True,
+            )
+
+            session.add_all([active_group, archived_group])
+            session.commit()
+
+            memberships = [
+                GroupMember(
+                    id=uuid4(),
+                    group_id=self.active_group_id,
+                    user_id=self.student_b_id,
+                    can_create_requests=False,
+                    can_edit_requests=False,
+                    can_assign_requests=False,
+                ),
+                GroupMember(
+                    id=uuid4(),
+                    group_id=self.active_group_id,
+                    user_id=self.staff_a_id,
+                    can_create_requests=False,
+                    can_edit_requests=False,
+                    can_assign_requests=True,
+                ),
+                GroupMember(
+                    id=uuid4(),
+                    group_id=self.archived_group_id,
+                    user_id=self.staff_a_id,
+                    can_create_requests=False,
+                    can_edit_requests=False,
+                    can_assign_requests=True,
+                ),
+            ]
+
+            active_group_request = ServiceRequest(
+                id=self.active_group_request_id,
+                user_id=self.student_a_id,
+                group_id=self.active_group_id,
+                title="Active group request",
+                description="Request belonging to active group",
+                category="IT",
+                status="pending",
+            )
+
+            archived_group_request = ServiceRequest(
+                id=self.archived_group_request_id,
+                user_id=self.student_a_id,
+                group_id=self.archived_group_id,
+                title="Archived group request",
+                description="Request belonging to archived group",
+                category="IT",
+                status="pending",
+            )
+
+            session.add_all([
+                *memberships,
+                active_group_request,
+                archived_group_request,
+            ])
             session.commit()
 
             request_a = ServiceRequest(
@@ -279,6 +357,84 @@ class ServiceRequestAuthorizationTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_nonmember_cannot_assign_existing_or_nonexistent_group_requests(self):
+        self.login_as(self.staff_b_id)
+
+        for request_id in [
+            self.active_group_request_id,
+            self.archived_group_request_id,
+            999,
+        ]:
+            with self.subTest(request_id=request_id):
+                response = self.client.patch(
+                    f"/api/requests/{request_id}/assign",
+                    json={"staff_id": str(self.staff_a_id)},
+                )
+                self.assertEqual(response.status_code, 404)
+
+    def test_nonmember_cannot_unassign_existing_or_nonexistent_group_requests(self):
+        self.login_as(self.staff_b_id)
+
+        for request_id in [
+            self.active_group_request_id,
+            self.archived_group_request_id,
+            999,
+        ]:
+            with self.subTest(request_id=request_id):
+                response = self.client.delete(
+                    f"/api/requests/{request_id}/assign"
+                )
+                self.assertEqual(response.status_code, 404)
+
+    def test_member_without_assign_permission_cannot_assign_or_unassign(self):
+        self.login_as(self.student_b_id)
+
+        for method in ["assign", "unassign"]:
+            with self.subTest(method=method):
+                if method == "assign":
+                    response = self.client.patch(
+                        f"/api/requests/{self.active_group_request_id}/assign",
+                        json={"staff_id": str(self.staff_a_id)},
+                    )
+                else:
+                    response = self.client.delete(
+                        f"/api/requests/{self.active_group_request_id}/assign"
+                    )
+
+                self.assertEqual(response.status_code, 403)
+
+    def test_owner_and_member_with_permission_can_assign_and_unassign(self):
+        for user_id in [self.student_a_id, self.staff_a_id]:
+            with self.subTest(user_id=user_id):
+                self.login_as(user_id)
+
+                assign_response = self.client.patch(
+                    f"/api/requests/{self.active_group_request_id}/assign",
+                    json={"staff_id": str(self.staff_a_id)},
+                )
+                self.assertEqual(assign_response.status_code, 200)
+
+                unassign_response = self.client.delete(
+                    f"/api/requests/{self.active_group_request_id}/assign"
+                )
+                self.assertEqual(unassign_response.status_code, 200)
+
+    def test_archived_group_authorized_users_cannot_assign_or_unassign(self):
+        for user_id in [self.student_a_id, self.staff_a_id]:
+            with self.subTest(user_id=user_id):
+                self.login_as(user_id)
+
+                assign_response = self.client.patch(
+                    f"/api/requests/{self.archived_group_request_id}/assign",
+                    json={"staff_id": str(self.staff_a_id)},
+                )
+                self.assertEqual(assign_response.status_code, 400)
+
+                unassign_response = self.client.delete(
+                    f"/api/requests/{self.archived_group_request_id}/assign"
+                )
+                self.assertEqual(unassign_response.status_code, 400)
 
     # ADMIN ACCESS TESTS
 

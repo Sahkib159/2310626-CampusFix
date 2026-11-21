@@ -31,6 +31,7 @@ class ServiceRequestResponse(BaseModel):
     id: int
     user_id: UUID | None = None
     assigned_to: UUID | None = None
+    group_id: UUID | None = None
     title: str
     description: str
     category: str

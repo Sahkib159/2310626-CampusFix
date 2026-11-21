@@ -2,6 +2,7 @@
 from sqlmodel import Session, select
 
 from app.models.service_request import ServiceRequest
+from app.models.group import Group, GroupMember
 
 
 def create_request(session: Session, request: ServiceRequest) -> ServiceRequest:
@@ -19,8 +20,10 @@ def get_all_requests(
     statement = select(ServiceRequest)
 
     if role == "STUDENT":
+        # Personal service requests only: excludes shared group requests
         statement = statement.where(
-            ServiceRequest.user_id == user_id
+            ServiceRequest.user_id == user_id,
+            ServiceRequest.group_id.is_(None),
         )
 
     elif role == "STAFF":
@@ -48,11 +51,24 @@ def get_request_by_id(
     )
 
     if role == "STUDENT":
+        # Allow access if it is user's personal request, or if user is owner/member of the group
+        member_group_ids = select(GroupMember.group_id).where(
+            GroupMember.user_id == user_id
+        )
+        owned_group_ids = select(Group.id).where(
+            Group.owner_id == user_id
+        )
         statement = statement.where(
-            ServiceRequest.user_id == user_id
+            (
+                (ServiceRequest.user_id == user_id)
+                & (ServiceRequest.group_id.is_(None))
+            )
+            | (ServiceRequest.group_id.in_(owned_group_ids))
+            | (ServiceRequest.group_id.in_(member_group_ids))
         )
 
     elif role == "STAFF":
+        # Staff access is strictly scoped to assigned requests
         statement = statement.where(
             ServiceRequest.assigned_to == user_id
         )
