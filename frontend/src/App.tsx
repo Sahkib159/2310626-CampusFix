@@ -14,6 +14,8 @@ import RequestDetailsPage from "./pages/RequestDetailsPage"
 import LoginPage from "./pages/LoginPage"
 import SignupPage from "./pages/SignupPage"
 import ProfilePage from "./pages/ProfilePage"
+import GroupsPage from "./pages/GroupsPage"
+import GroupDetailsPage from "./pages/GroupDetailsPage"
 
 function ProtectedRoute() {
   const { user, loading } = useAuth()
@@ -41,13 +43,22 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/profile" element={<ProfilePage />} />
+
+          {/* Groups */}
+          <Route path="/groups" element={<GroupsPage />} />
+          <Route
+            path="/groups/:groupId"
+            element={<GroupDetailsPage />}
+          />
+
+          {/* Service requests */}
           <Route
             path="/requests/:id"
             element={<RequestDetailsPage />}
           />
         </Route>
 
-        {/* Unknown URLs return to the dashboard */}
+        {/* Unknown URLs return to dashboard */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

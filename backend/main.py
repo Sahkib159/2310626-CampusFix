@@ -7,9 +7,11 @@ from fastapi import FastAPI
 from database import engine
 
 from app.models.service_request import ServiceRequest
+from app.models.group import Group, GroupMember
 from app.service_requests.router import router as request_router
 from app.auth.router import router as auth_router
 from app.staff.router import router as staff_router
+from app.groups.router import router as group_router
 
 
 @asynccontextmanager
@@ -29,6 +31,7 @@ app = FastAPI(
 app.include_router(request_router)
 app.include_router(auth_router)
 app.include_router(staff_router)
+app.include_router(group_router)
 
 
 @app.get("/api/health")

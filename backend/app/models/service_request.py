@@ -3,8 +3,11 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Text
+from sqlalchemy import BigInteger, Integer, Text
 from sqlmodel import SQLModel, Field
+
+# Ensure related models are registered in metadata
+from app.models.group import Group
 
 
 class ServiceRequest(SQLModel, table=True):
@@ -13,7 +16,7 @@ class ServiceRequest(SQLModel, table=True):
     id: Optional[int] = Field(
         default=None,
         primary_key=True,
-        sa_type=BigInteger,
+        sa_type=BigInteger().with_variant(Integer, "sqlite"),
     )
 
     # Student who created the request
@@ -27,6 +30,14 @@ class ServiceRequest(SQLModel, table=True):
     assigned_to: Optional[UUID] = Field(
         default=None,
         foreign_key="users.id",
+        index=True,
+    )
+
+    # Shared group this request belongs to (None for personal requests)
+    group_id: Optional[UUID] = Field(
+        default=None,
+        foreign_key="groups.id",
+        ondelete="RESTRICT",
         index=True,
     )
 

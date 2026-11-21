@@ -18,6 +18,7 @@ from app.models.service_request import ServiceRequest
 from app.models.user import User
 from app.models.refresh_session import RefreshSession
 from app.models.login_attempt import LoginAttempt
+from app.models.group import Group, GroupMember
 
 config = context.config
 

@@ -75,6 +75,15 @@ export default function Header({ onRefresh }: HeaderProps) {
 
         <button
           className="dashboard-refresh"
+          onClick={() => navigate("/groups")}
+          disabled={loggingOut}
+          aria-current={location.pathname.startsWith("/groups") ? "page" : undefined}
+        >
+          Groups
+        </button>
+
+        <button
+          className="dashboard-refresh"
           onClick={() => navigate("/profile")}
           disabled={loggingOut}
           aria-current={location.pathname === "/profile" ? "page" : undefined}
