@@ -8,22 +8,33 @@ from database import get_session
 from app.models.user import User
 from app.auth.dependencies import get_current_admin
 from app.admin import service
+
 from app.admin.schemas import (
     AdminUserListResponse,
     AdminUserResponse,
     AdminUserDetailResponse,
     BanUserRequest,
+    BulkBanUserRequest,
+    BulkUnbanUserRequest,
+    BulkUserOperationResponse,
     ChangeUserRoleRequest,
     AdminDashboardStatsResponse,
     RecentRegistrationResponse,
 )
+
 from app.audit.service import record_event
 
 
-router = APIRouter(prefix="/api/admin", tags=["Administration"])
+router = APIRouter(
+    prefix="/api/admin",
+    tags=["Administration"],
+)
 
 
-@router.get("/users", response_model=AdminUserListResponse)
+@router.get(
+    "/users",
+    response_model=AdminUserListResponse,
+)
 def list_users(
     search: str | None = Query(default=None, max_length=255),
     role: str | None = Query(default=None),
@@ -40,6 +51,44 @@ def list_users(
         is_active,
         page,
         page_size,
+    )
+
+
+# Keep bulk routes before individual user routes.
+@router.post(
+    "/users/bulk-ban",
+    response_model=BulkUserOperationResponse,
+)
+def bulk_ban_users(
+    data: BulkBanUserRequest,
+    request: Request,
+    current_admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    return service.bulk_ban_users(
+        session=session,
+        current_admin=current_admin,
+        user_ids=data.user_ids,
+        reason=data.reason,
+        request=request,
+    )
+
+
+@router.post(
+    "/users/bulk-unban",
+    response_model=BulkUserOperationResponse,
+)
+def bulk_unban_users(
+    data: BulkUnbanUserRequest,
+    request: Request,
+    current_admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    return service.bulk_unban_users(
+        session=session,
+        current_admin=current_admin,
+        user_ids=data.user_ids,
+        request=request,
     )
 
 
@@ -99,7 +148,10 @@ def unban_user(
     current_admin: User = Depends(get_current_admin),
     session: Session = Depends(get_session),
 ):
-    result = service.unban_user(session, user_id)
+    result = service.unban_user(
+        session,
+        user_id,
+    )
 
     record_event(
         session,
@@ -124,8 +176,16 @@ def change_user_role(
     current_admin: User = Depends(get_current_admin),
     session: Session = Depends(get_session),
 ):
-    target_before = service.get_admin_user_by_id(session, user_id)
-    old_role = target_before.role if target_before else None
+    target_before = service.get_admin_user_by_id(
+        session,
+        user_id,
+    )
+
+    old_role = (
+        target_before.role
+        if target_before
+        else None
+    )
 
     result = service.change_user_role(
         session,
@@ -170,4 +230,7 @@ def recent_users(
     current_admin: User = Depends(get_current_admin),
     session: Session = Depends(get_session),
 ):
-    return service.get_recent_users(session, limit)
+    return service.get_recent_users(
+        session,
+        limit,
+    )

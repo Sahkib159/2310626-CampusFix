@@ -1,9 +1,11 @@
 
+import logging
 import math
+
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Request, status
 from sqlmodel import Session
 
 from app.admin.repository import (
@@ -27,10 +29,15 @@ from app.admin.schemas import (
     AdminServiceRequestResponse,
     AdminGroupMembershipResponse,
     AdminSessionResponse,
+    BulkUserStatusResult,
+    BulkUserOperationResponse,
 )
 
 from app.models.user import User
+from app.audit.service import record_event
 
+
+logger = logging.getLogger(__name__)
 
 VALID_ROLES = {"STUDENT", "STAFF", "ADMIN"}
 
@@ -89,13 +96,11 @@ def get_user_detail(
             detail="User not found.",
         )
 
-    # Service requests created by this user
     requests = get_user_service_requests(
         session,
         user_id,
     )
 
-    # Groups owned or joined by this user
     group_records = get_user_groups(
         session,
         user_id,
@@ -135,7 +140,6 @@ def get_user_detail(
             )
         )
 
-    # All refresh sessions, without exposing token hashes
     refresh_sessions = get_user_refresh_sessions(
         session,
         user_id,
@@ -167,7 +171,6 @@ def get_user_detail(
             )
         )
 
-    # Recent audit activity involving this user
     activity = get_user_recent_activity(
         session,
         user_id,
@@ -359,3 +362,159 @@ def get_recent_users(
         RecentRegistrationResponse.model_validate(user)
         for user in users
     ]
+
+
+def bulk_ban_users(
+    session: Session,
+    current_admin: User,
+    user_ids: list[UUID],
+    reason: str,
+    request: Request,
+) -> BulkUserOperationResponse:
+
+    results = []
+
+    for user_id in user_ids:
+        try:
+            result = ban_user(
+                session,
+                current_admin,
+                user_id,
+                reason,
+            )
+
+            record_event(
+                session,
+                "USER_BANNED",
+                request,
+                actor_id=current_admin.id,
+                target_user_id=result.id,
+                email=result.email,
+                details={"reason": reason.strip()},
+            )
+
+            results.append(
+                BulkUserStatusResult(
+                    user_id=user_id,
+                    success=True,
+                    message="User banned successfully.",
+                    user=result,
+                )
+            )
+
+        except HTTPException as exc:
+            session.rollback()
+
+            results.append(
+                BulkUserStatusResult(
+                    user_id=user_id,
+                    success=False,
+                    message=str(exc.detail),
+                )
+            )
+
+        except Exception:
+            session.rollback()
+
+            logger.exception(
+                "Unexpected error while bulk-banning user %s",
+                user_id,
+            )
+
+            results.append(
+                BulkUserStatusResult(
+                    user_id=user_id,
+                    success=False,
+                    message=(
+                        "An unexpected error occurred "
+                        "while banning this user."
+                    ),
+                )
+            )
+
+    succeeded = sum(
+        1 for item in results if item.success
+    )
+
+    return BulkUserOperationResponse(
+        total=len(user_ids),
+        succeeded=succeeded,
+        failed=len(results) - succeeded,
+        results=results,
+    )
+
+
+def bulk_unban_users(
+    session: Session,
+    current_admin: User,
+    user_ids: list[UUID],
+    request: Request,
+) -> BulkUserOperationResponse:
+
+    results = []
+
+    for user_id in user_ids:
+        try:
+            result = unban_user(
+                session,
+                user_id,
+            )
+
+            record_event(
+                session,
+                "USER_UNBANNED",
+                request,
+                actor_id=current_admin.id,
+                target_user_id=result.id,
+                email=result.email,
+            )
+
+            results.append(
+                BulkUserStatusResult(
+                    user_id=user_id,
+                    success=True,
+                    message="User unbanned successfully.",
+                    user=result,
+                )
+            )
+
+        except HTTPException as exc:
+            session.rollback()
+
+            results.append(
+                BulkUserStatusResult(
+                    user_id=user_id,
+                    success=False,
+                    message=str(exc.detail),
+                )
+            )
+
+        except Exception:
+            session.rollback()
+
+            logger.exception(
+                "Unexpected error while bulk-unbanning user %s",
+                user_id,
+            )
+
+            results.append(
+                BulkUserStatusResult(
+                    user_id=user_id,
+                    success=False,
+                    message=(
+                        "An unexpected error occurred "
+                        "while unbanning this user."
+                    ),
+                )
+            )
+
+    succeeded = sum(
+        1 for item in results if item.success
+    )
+
+    return BulkUserOperationResponse(
+        total=len(user_ids),
+        succeeded=succeeded,
+        failed=len(results) - succeeded,
+        results=results,
+    )

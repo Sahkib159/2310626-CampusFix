@@ -127,6 +127,29 @@ export interface AdminUserFilters {
   page_size?: number
 }
 
+export interface BulkBanUserRequest {
+  user_ids: string[]
+  reason: string
+}
+
+export interface BulkUnbanUserRequest {
+  user_ids: string[]
+}
+
+export interface BulkUserStatusResult {
+  user_id: string
+  success: boolean
+  message: string
+  user?: AdminUser | null
+}
+
+export interface BulkUserOperationResponse {
+  total: number
+  succeeded: number
+  failed: number
+  results: BulkUserStatusResult[]
+}
+
 export interface AuditLogFilters {
   action?: string
   email?: string
@@ -446,6 +469,50 @@ export async function changeAdminUserRole(
   )
 
   return handleResponse<AdminUser>(response)
+}
+
+export async function bulkBanAdminUsers(
+  accessToken: string,
+  userIds: string[],
+  reason: string
+): Promise<BulkUserOperationResponse> {
+  const response = await authenticatedFetch(
+    `${API_URL}/admin/users/bulk-ban`,
+    {
+      method: "POST",
+      headers: {
+        ...getAuthHeaders(accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        user_ids: userIds,
+        reason,
+      }),
+    },
+    accessToken
+  )
+
+  return handleResponse<BulkUserOperationResponse>(response)
+}
+
+export async function bulkUnbanAdminUsers(
+  accessToken: string,
+  userIds: string[]
+): Promise<BulkUserOperationResponse> {
+  const response = await authenticatedFetch(
+    `${API_URL}/admin/users/bulk-unban`,
+    {
+      method: "POST",
+      headers: {
+        ...getAuthHeaders(accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ user_ids: userIds }),
+    },
+    accessToken
+  )
+
+  return handleResponse<BulkUserOperationResponse>(response)
 }
 
 // ==========================================

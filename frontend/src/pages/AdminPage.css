@@ -408,6 +408,68 @@
   grid-template-columns: repeat(4, minmax(130px, 1fr)) auto;
 }
 
+.admin-bulk-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #e7edf5;
+  border-radius: 12px;
+}
+
+.admin-bulk-selection,
+.admin-bulk-selection label,
+.admin-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-bulk-selection {
+  justify-content: space-between;
+  flex: 1;
+}
+
+.admin-bulk-selection label {
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-bulk-selection strong {
+  color: #64748b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.admin-bulk-toolbar input[type="checkbox"],
+.admin-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.admin-bulk-toolbar input[type="checkbox"]:disabled,
+.admin-table input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.admin-select-column {
+  width: 58px;
+  text-align: center;
+}
+
+.admin-select-heading {
+  display: inline-block;
+  text-align: center;
+}
+
 /* Tables */
 
 .admin-table-wrap {
@@ -910,6 +972,27 @@
 
   .admin-filter-panel .admin-secondary-button {
     width: fit-content;
+  }
+
+  .admin-bulk-toolbar,
+  .admin-bulk-selection {
+    align-items: flex-start;
+  }
+
+  .admin-bulk-toolbar {
+    flex-direction: column;
+  }
+
+  .admin-bulk-selection {
+    width: 100%;
+  }
+
+  .admin-bulk-actions {
+    width: 100%;
+  }
+
+  .admin-bulk-actions .admin-action-button {
+    flex: 1;
   }
 }
 
