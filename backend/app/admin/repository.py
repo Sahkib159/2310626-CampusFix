@@ -174,3 +174,14 @@ def get_recent_registrations(
     )
 
     return list(session.exec(statement).all())
+
+
+def get_admin_users_by_ids(
+    session: Session,
+    user_ids: list[UUID],
+) -> list[User]:
+    statement = select(User).where(
+        User.id.in_(user_ids)
+    )
+
+    return list(session.exec(statement).all())

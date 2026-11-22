@@ -2,7 +2,12 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+)
 
 from app.audit.schemas import AuditLogResponse
 
@@ -35,6 +40,54 @@ class BanUserRequest(BaseModel):
         min_length=3,
         max_length=500,
     )
+
+
+class BulkBanUserRequest(BaseModel):
+    user_ids: list[UUID] = Field(
+        min_length=1,
+        max_length=100,
+    )
+    reason: str = Field(
+        min_length=3,
+        max_length=500,
+    )
+
+    @field_validator("user_ids")
+    @classmethod
+    def validate_unique_user_ids(cls, user_ids: list[UUID]):
+        if len(user_ids) != len(set(user_ids)):
+            raise ValueError("Duplicate user IDs are not allowed.")
+
+        return user_ids
+
+
+class BulkUnbanUserRequest(BaseModel):
+    user_ids: list[UUID] = Field(
+        min_length=1,
+        max_length=100,
+    )
+
+    @field_validator("user_ids")
+    @classmethod
+    def validate_unique_user_ids(cls, user_ids: list[UUID]):
+        if len(user_ids) != len(set(user_ids)):
+            raise ValueError("Duplicate user IDs are not allowed.")
+
+        return user_ids
+
+
+class BulkUserStatusResult(BaseModel):
+    user_id: UUID
+    success: bool
+    message: str
+    user: AdminUserResponse | None = None
+
+
+class BulkUserOperationResponse(BaseModel):
+    total: int
+    succeeded: int
+    failed: int
+    results: list[BulkUserStatusResult]
 
 
 class ChangeUserRoleRequest(BaseModel):

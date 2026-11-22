@@ -6,6 +6,8 @@ import { useAuth } from "../contexts/AuthContext"
 
 import {
   banAdminUser,
+  bulkBanAdminUsers,
+  bulkUnbanAdminUsers,
   changeAdminUserRole,
   exportAdminAuditLogs,
   getAdminAuditLogs,
@@ -87,6 +89,8 @@ export default function AdminPage() {
   const [loadingAudit, setLoadingAudit] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [workingUserId, setWorkingUserId] = useState<string | null>(null)
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
+  const [bulkRunning, setBulkRunning] = useState(false)
 
   const [selectedUserDetail, setSelectedUserDetail] =
     useState<AdminUserDetail | null>(null)
@@ -101,7 +105,7 @@ export default function AdminPage() {
   const [auditFilters, setAuditFilters] = useState<AuditLogFilters>({})
 
   const loadOverview = useCallback(async () => {
-    if (!accessToken) return
+    if (!accessToken) return false
 
     setLoadingOverview(true)
 
@@ -113,15 +117,17 @@ export default function AdminPage() {
 
       setStats(statsResult)
       setRecentUsers(recentResult)
+      return true
     } catch (err) {
       setError(getErrorMessage(err))
+      return false
     } finally {
       setLoadingOverview(false)
     }
   }, [accessToken])
 
   const loadUsers = useCallback(async () => {
-    if (!accessToken) return
+    if (!accessToken) return false
 
     setLoadingUsers(true)
 
@@ -131,8 +137,10 @@ export default function AdminPage() {
       setUsers(result.users)
       setUsersTotal(result.total)
       setUsersTotalPages(result.total_pages)
+      return true
     } catch (err) {
       setError(getErrorMessage(err))
+      return false
     } finally {
       setLoadingUsers(false)
     }
@@ -213,6 +221,7 @@ export default function AdminPage() {
   function applyUserFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     clearMessages()
+    setSelectedUserIds(new Set())
 
     setUsersPage(1)
 
@@ -244,6 +253,7 @@ export default function AdminPage() {
     setUserRoleFilter("")
     setUserStatusFilter("")
     setUsersPage(1)
+    setSelectedUserIds(new Set())
     setUserFilters({ page: 1, page_size: 20 })
     clearMessages()
   }
@@ -251,6 +261,7 @@ export default function AdminPage() {
   function changeUsersPage(nextPage: number) {
     if (nextPage < 1 || nextPage > usersTotalPages) return
 
+    setSelectedUserIds(new Set())
     setUsersPage(nextPage)
     setUserFilters((current) => ({
       ...current,
@@ -391,6 +402,212 @@ export default function AdminPage() {
     }
   }
 
+  function isBulkSelectable(target: AdminUser): boolean {
+    return target.id !== user?.id && target.role !== "ADMIN"
+  }
+
+  function toggleUserSelection(target: AdminUser) {
+    if (bulkRunning || !isBulkSelectable(target)) return
+
+    setSelectedUserIds((current) => {
+      const next = new Set(current)
+      if (next.has(target.id)) {
+        next.delete(target.id)
+      } else {
+        next.add(target.id)
+      }
+      return next
+    })
+  }
+
+  function toggleSelectAllUsers() {
+    if (bulkRunning) return
+
+    const selectableIds = users
+      .filter(isBulkSelectable)
+      .map((target) => target.id)
+    const allSelected =
+      selectableIds.length > 0 &&
+      selectableIds.every((id) => selectedUserIds.has(id))
+
+    setSelectedUserIds((current) => {
+      const next = new Set(current)
+      if (allSelected) {
+        selectableIds.forEach((id) => next.delete(id))
+      } else {
+        selectableIds.forEach((id) => next.add(id))
+      }
+      return next
+    })
+  }
+
+  async function handleBulkBanUsers() {
+    if (!accessToken || bulkRunning) return
+
+    const selectedTargets = users.filter((target) =>
+      selectedUserIds.has(target.id)
+    )
+    const eligibleTargets = selectedTargets.filter(
+      (target) => isBulkSelectable(target) && !target.is_banned
+    )
+
+    if (eligibleTargets.length === 0) {
+      showError(
+        "Select at least one eligible, not-yet-banned user for bulk ban."
+      )
+      return
+    }
+
+    const reason = window.prompt(
+      `Enter a reason for banning ${eligibleTargets.length} selected user${eligibleTargets.length === 1 ? "" : "s"}:`
+    )
+
+    if (reason === null) return
+
+    if (reason.trim().length < 3) {
+      showError("The ban reason must contain at least 3 characters.")
+      return
+    }
+
+    if (reason.trim().length > 500) {
+      showError("The ban reason cannot exceed 500 characters.")
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Ban ${eligibleTargets.length} selected user${eligibleTargets.length === 1 ? "" : "s"}? Their active sessions will be revoked.`
+    )
+
+    if (!confirmed) return
+
+    clearMessages()
+    setBulkRunning(true)
+
+    try {
+      const result = await bulkBanAdminUsers(
+        accessToken,
+        eligibleTargets.map((target) => target.id),
+        reason.trim()
+      )
+
+      const failures = result.results.filter((item) => !item.success)
+      const usersRefreshed = await loadUsers()
+      const overviewRefreshed = await loadOverview()
+      const refreshFailed = !usersRefreshed || !overviewRefreshed
+
+      if (failures.length > 0) {
+        setSuccess("")
+        const failureMessages = failures
+            .map((item) => {
+              const target = users.find(
+                (candidate) => candidate.id === item.user_id
+              )
+              return `${target ? `${target.name} (${target.email})` : item.user_id}: ${item.message}`
+            })
+            .join(" ")
+        const refreshWarning = refreshFailed
+          ? " Refresh users or overview data failed; the operation completed but the displayed data may be stale."
+          : ""
+
+        setError(
+          `Bulk ban complete: ${result.failed} failed, ${result.succeeded} succeeded. ` +
+          failureMessages +
+          refreshWarning
+        )
+      } else if (refreshFailed) {
+        setSuccess("")
+        setError(
+          `Bulk ban operation completed: ${result.succeeded} succeeded, 0 failed. ` +
+          "Refreshing users or overview data failed; the operation completed but the displayed data may be stale."
+        )
+      } else {
+        setError("")
+        setSuccess(
+          `Bulk ban complete: ${result.succeeded} succeeded, 0 failed.`
+        )
+      }
+    } catch (err) {
+      showError(getErrorMessage(err))
+    } finally {
+      setSelectedUserIds(new Set())
+      setBulkRunning(false)
+    }
+  }
+
+  async function handleBulkUnbanUsers() {
+    if (!accessToken || bulkRunning) return
+
+    const eligibleTargets = users.filter(
+      (target) =>
+        selectedUserIds.has(target.id) &&
+        isBulkSelectable(target) &&
+        target.is_banned
+    )
+
+    if (eligibleTargets.length === 0) {
+      showError("Select at least one banned user for bulk unban.")
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Unban ${eligibleTargets.length} selected user${eligibleTargets.length === 1 ? "" : "s"}?`
+    )
+
+    if (!confirmed) return
+
+    clearMessages()
+    setBulkRunning(true)
+
+    try {
+      const result = await bulkUnbanAdminUsers(
+        accessToken,
+        eligibleTargets.map((target) => target.id)
+      )
+
+      const failures = result.results.filter((item) => !item.success)
+      const usersRefreshed = await loadUsers()
+      const overviewRefreshed = await loadOverview()
+      const refreshFailed = !usersRefreshed || !overviewRefreshed
+
+      if (failures.length > 0) {
+        setSuccess("")
+        const failureMessages = failures
+            .map((item) => {
+              const target = users.find(
+                (candidate) => candidate.id === item.user_id
+              )
+              return `${target ? `${target.name} (${target.email})` : item.user_id}: ${item.message}`
+            })
+            .join(" ")
+        const refreshWarning = refreshFailed
+          ? " Refresh users or overview data failed; the operation completed but the displayed data may be stale."
+          : ""
+
+        setError(
+          `Bulk unban complete: ${result.failed} failed, ${result.succeeded} succeeded. ` +
+          failureMessages +
+          refreshWarning
+        )
+      } else if (refreshFailed) {
+        setSuccess("")
+        setError(
+          `Bulk unban operation completed: ${result.succeeded} succeeded, 0 failed. ` +
+          "Refreshing users or overview data failed; the operation completed but the displayed data may be stale."
+        )
+      } else {
+        setError("")
+        setSuccess(
+          `Bulk unban complete: ${result.succeeded} succeeded, 0 failed.`
+        )
+      }
+    } catch (err) {
+      showError(getErrorMessage(err))
+    } finally {
+      setSelectedUserIds(new Set())
+      setBulkRunning(false)
+    }
+  }
+
   async function handleRoleChange(
     target: AdminUser,
     newRole: string
@@ -471,6 +688,25 @@ export default function AdminPage() {
     if (!stats.total_users) return 0
     return Math.min(100, (count / stats.total_users) * 100)
   }
+
+  const selectableUserIds = users
+    .filter(isBulkSelectable)
+    .map((target) => target.id)
+  const allSelectableUsersSelected =
+    selectableUserIds.length > 0 &&
+    selectableUserIds.every((id) => selectedUserIds.has(id))
+  const selectedBannableCount = users.filter(
+    (target) =>
+      selectedUserIds.has(target.id) &&
+      isBulkSelectable(target) &&
+      !target.is_banned
+  ).length
+  const selectedUnbannableCount = users.filter(
+    (target) =>
+      selectedUserIds.has(target.id) &&
+      isBulkSelectable(target) &&
+      target.is_banned
+  ).length
 
   return (
     <div className="app admin-app">
@@ -795,6 +1031,43 @@ export default function AdminPage() {
             </button>
           </form>
 
+          <div className="admin-bulk-toolbar">
+            <div className="admin-bulk-selection">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={allSelectableUsersSelected}
+                  disabled={bulkRunning || selectableUserIds.length === 0}
+                  onChange={toggleSelectAllUsers}
+                  aria-label="Select eligible users on this page"
+                />
+                <span>Select all eligible</span>
+              </label>
+              <strong>
+                {selectedUserIds.size} selected
+              </strong>
+            </div>
+
+            <div className="admin-bulk-actions">
+              <button
+                type="button"
+                className="admin-action-button ban"
+                disabled={bulkRunning || selectedBannableCount === 0}
+                onClick={() => void handleBulkBanUsers()}
+              >
+                {bulkRunning ? "Working..." : `Bulk ban (${selectedBannableCount})`}
+              </button>
+              <button
+                type="button"
+                className="admin-action-button unban"
+                disabled={bulkRunning || selectedUnbannableCount === 0}
+                onClick={() => void handleBulkUnbanUsers()}
+              >
+                {bulkRunning ? "Working..." : `Bulk unban (${selectedUnbannableCount})`}
+              </button>
+            </div>
+          </div>
+
           <section className="admin-panel">
             {loadingUsers ? (
               <div className="admin-loading">Loading users...</div>
@@ -805,6 +1078,15 @@ export default function AdminPage() {
                 <table className="admin-table">
                   <thead>
                     <tr>
+                      <th className="admin-select-column">
+                        <input
+                          type="checkbox"
+                          checked={allSelectableUsersSelected}
+                          disabled={bulkRunning || selectableUserIds.length === 0}
+                          onChange={toggleSelectAllUsers}
+                          aria-label="Select all eligible users on this page"
+                        />
+                      </th>
                       <th>User</th>
                       <th>Role</th>
                       <th>Status</th>
@@ -822,6 +1104,15 @@ export default function AdminPage() {
 
                       return (
                         <tr key={target.id}>
+                          <td className="admin-select-column">
+                            <input
+                              type="checkbox"
+                              checked={selectedUserIds.has(target.id)}
+                              disabled={bulkRunning || !isBulkSelectable(target)}
+                              onChange={() => toggleUserSelection(target)}
+                              aria-label={`Select ${target.name}`}
+                            />
+                          </td>
                           <td>
                             <div className="admin-user-cell">
                               <div className="admin-user-avatar">
