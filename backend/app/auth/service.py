@@ -347,18 +347,28 @@ def refresh_session(
 def logout(
     session: Session,
     raw_token: str,
-) -> None:
+) -> User | None:
     stored_session = repository.get_refresh_session_by_hash(
         session,
         hash_refresh_token(raw_token),
     )
 
-    if stored_session is not None:
-        # Logout invalidates the complete login session.
-        repository.revoke_refresh_family(
-            session,
-            stored_session.family_id,
-        )
+    if stored_session is None:
+        return None
+
+    # Retrieve the user before revoking the refresh-token family.
+    user = repository.get_user_by_id(
+        session,
+        stored_session.user_id,
+    )
+
+    # Logout invalidates the complete login session.
+    repository.revoke_refresh_family(
+        session,
+        stored_session.family_id,
+    )
+
+    return user
 
 
 def get_user_sessions(

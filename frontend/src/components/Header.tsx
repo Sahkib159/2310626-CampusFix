@@ -46,6 +46,8 @@ export default function Header({ onRefresh }: HeaderProps) {
     }
   }
 
+  const isAdminPage = location.pathname.startsWith("/admin")
+
   return (
     <header className="dashboard-header">
       <div
@@ -75,9 +77,20 @@ export default function Header({ onRefresh }: HeaderProps) {
 
         <button
           className="dashboard-refresh"
+          onClick={() => navigate("/")}
+          disabled={loggingOut}
+          aria-current={location.pathname === "/" ? "page" : undefined}
+        >
+          Dashboard
+        </button>
+
+        <button
+          className="dashboard-refresh"
           onClick={() => navigate("/groups")}
           disabled={loggingOut}
-          aria-current={location.pathname.startsWith("/groups") ? "page" : undefined}
+          aria-current={
+            location.pathname.startsWith("/groups") ? "page" : undefined
+          }
         >
           Groups
         </button>
@@ -86,10 +99,23 @@ export default function Header({ onRefresh }: HeaderProps) {
           className="dashboard-refresh"
           onClick={() => navigate("/profile")}
           disabled={loggingOut}
-          aria-current={location.pathname === "/profile" ? "page" : undefined}
+          aria-current={
+            location.pathname === "/profile" ? "page" : undefined
+          }
         >
           Profile
         </button>
+
+        {user?.role === "ADMIN" && (
+          <button
+            className="dashboard-refresh"
+            onClick={() => navigate("/admin")}
+            disabled={loggingOut}
+            aria-current={isAdminPage ? "page" : undefined}
+          >
+            Admin
+          </button>
+        )}
 
         {onRefresh && (
           <button

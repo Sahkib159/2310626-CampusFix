@@ -49,11 +49,18 @@ def get_current_user(
     if user is None:
         raise unauthorized
 
-    # Reject inactive or banned accounts on every protected request.
+    # Reject administratively banned accounts on every protected request.
+    if user.is_banned:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been banned.",
+        )
+
+    # Reject inactive accounts.
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is inactive or banned.",
+            detail="Your account is inactive.",
         )
 
     return user

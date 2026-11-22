@@ -16,6 +16,7 @@ import SignupPage from "./pages/SignupPage"
 import ProfilePage from "./pages/ProfilePage"
 import GroupsPage from "./pages/GroupsPage"
 import GroupDetailsPage from "./pages/GroupDetailsPage"
+import AdminPage from "./pages/AdminPage"
 
 function ProtectedRoute() {
   const { user, loading } = useAuth()
@@ -31,6 +32,24 @@ function ProtectedRoute() {
   return <Outlet />
 }
 
+function AdminRoute() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return <p className="auth-loading">Checking administrator access...</p>
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (user.role !== "ADMIN") {
+    return <Navigate to="/" replace />
+  }
+
+  return <Outlet />
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -38,6 +57,11 @@ export default function App() {
         {/* Public authentication pages */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+
+        {/* Protected administrator pages */}
+        <Route element={<AdminRoute />}>
+          <Route path="/admin" element={<AdminPage />} />
+        </Route>
 
         {/* Protected application pages */}
         <Route element={<ProtectedRoute />}>

@@ -1229,3 +1229,188 @@ button {
     width: 100%;
   }
 }
+
+/* Admin staff assignment panel */
+.staff-assignment {
+  margin-top: 18px;
+  padding: 18px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.staff-assignment h4 {
+  margin: 0 0 7px;
+  color: #1e293b;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.staff-assignment .panel-description {
+  margin: 0 0 16px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.staff-assignment-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.staff-assignment-select {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 14px;
+  color: #1e293b;
+  background-color: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  font-size: 14px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.staff-assignment-select:hover {
+  border-color: #94a3b8;
+}
+
+.staff-assignment-select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 12%);
+}
+
+.staff-assignment-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.staff-assignment .empty-state {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+@media (max-width: 480px) {
+  .staff-assignment {
+    padding: 14px;
+  }
+}
+
+/* Staff assignment panel */
+.staff-assignment {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid #dce5f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.staff-assignment-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.staff-assignment-heading h4 {
+  margin: 0 0 5px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #172b4d;
+}
+
+.staff-assignment-heading .panel-description {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.staff-assignment-status {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.staff-assignment-status.is-assigned {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.staff-assignment-status.is-unassigned {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.staff-current-assignment {
+  margin: 0 0 14px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.staff-current-assignment strong {
+  color: #172b4d;
+}
+
+.staff-select-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.staff-select-group label {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.staff-member-select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 38px 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background-color: #fff;
+  color: #1e293b;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.staff-member-select:hover {
+  border-color: #94a3b8;
+}
+
+.staff-member-select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.staff-assignment-actions {
+  margin-top: 14px;
+}
+
+.staff-assignment .empty-state {
+  margin: 12px 0 0;
+  color: #b45309;
+  font-size: 13px;
+}
+
+@media (max-width: 480px) {
+  .staff-assignment {
+    padding: 15px;
+  }
+
+  .staff-assignment-heading {
+    flex-direction: column;
+  }
+}
