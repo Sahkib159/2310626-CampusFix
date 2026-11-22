@@ -1,4 +1,6 @@
 
+import { authenticatedFetch } from "./auth"
+
 const API_URL = "/api/admin"
 
 export interface AdminUser {
@@ -119,12 +121,20 @@ function buildQuery(
   return query ? `?${query}` : ""
 }
 
+// ============================================
+// DASHBOARD
+// ============================================
+
 export async function getDashboardStats(
   accessToken: string
 ): Promise<AdminDashboardStats> {
-  const response = await fetch(`${API_URL}/dashboard/stats`, {
-    headers: authHeaders(accessToken),
-  })
+  const response = await authenticatedFetch(
+    `${API_URL}/dashboard/stats`,
+    {
+      headers: authHeaders(accessToken),
+    },
+    accessToken
+  )
 
   return handleResponse<AdminDashboardStats>(response)
 }
@@ -133,15 +143,20 @@ export async function getRecentUsers(
   accessToken: string,
   limit = 5
 ): Promise<RecentUser[]> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/dashboard/recent-users?limit=${limit}`,
     {
       headers: authHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<RecentUser[]>(response)
 }
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
 
 export async function getAdminUsers(
   accessToken: string,
@@ -158,9 +173,13 @@ export async function getAdminUsers(
     page_size: filters.page_size ?? 10,
   })
 
-  const response = await fetch(`${API_URL}/users${query}`, {
-    headers: authHeaders(accessToken),
-  })
+  const response = await authenticatedFetch(
+    `${API_URL}/users${query}`,
+    {
+      headers: authHeaders(accessToken),
+    },
+    accessToken
+  )
 
   return handleResponse<AdminUserList>(response)
 }
@@ -170,7 +189,7 @@ export async function banUser(
   userId: string,
   reason: string
 ): Promise<AdminUser> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/users/${encodeURIComponent(userId)}/ban`,
     {
       method: "POST",
@@ -179,7 +198,8 @@ export async function banUser(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ reason }),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<AdminUser>(response)
@@ -189,12 +209,13 @@ export async function unbanUser(
   accessToken: string,
   userId: string
 ): Promise<AdminUser> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/users/${encodeURIComponent(userId)}/unban`,
     {
       method: "POST",
       headers: authHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<AdminUser>(response)
@@ -205,7 +226,7 @@ export async function changeUserRole(
   userId: string,
   role: string
 ): Promise<AdminUser> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/users/${encodeURIComponent(userId)}/role`,
     {
       method: "PATCH",
@@ -214,11 +235,16 @@ export async function changeUserRole(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ role }),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<AdminUser>(response)
 }
+
+// ============================================
+// AUDIT LOGS
+// ============================================
 
 export async function getAuditLogs(
   accessToken: string,
@@ -233,12 +259,20 @@ export async function getAuditLogs(
     page_size: filters.page_size ?? 20,
   })
 
-  const response = await fetch(`${API_URL}/audit-logs${query}`, {
-    headers: authHeaders(accessToken),
-  })
+  const response = await authenticatedFetch(
+    `${API_URL}/audit-logs${query}`,
+    {
+      headers: authHeaders(accessToken),
+    },
+    accessToken
+  )
 
   return handleResponse<AuditLogList>(response)
 }
+
+// ============================================
+// CSV EXPORT
+// ============================================
 
 export async function exportAuditLogs(
   accessToken: string,
@@ -251,11 +285,12 @@ export async function exportAuditLogs(
     end_date: filters.end_date,
   })
 
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/audit-logs/export${query}`,
     {
       headers: authHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   if (!response.ok) {
