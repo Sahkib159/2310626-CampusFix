@@ -40,6 +40,33 @@ export interface PasswordChangeData {
   new_password: string
 }
 
+type AuthCallbacks = {
+  onTokenRefreshed: (response: AuthResponse) => void
+  onAuthExpired: () => void
+}
+
+// ==========================================
+// SHARED AUTH STATE
+// ==========================================
+
+let authCallbacks: AuthCallbacks | null = null
+let refreshPromise: Promise<AuthResponse> | null = null
+let currentAccessToken: string | null = null
+
+export function registerAuthCallbacks(callbacks: AuthCallbacks) {
+  authCallbacks = callbacks
+
+  return () => {
+    if (authCallbacks === callbacks) {
+      authCallbacks = null
+    }
+  }
+}
+
+export function setCurrentAccessToken(token: string | null) {
+  currentAccessToken = token
+}
+
 // ==========================================
 // SHARED RESPONSE HANDLER
 // ==========================================
@@ -117,15 +144,97 @@ export async function logout(): Promise<void> {
   return handleResponse<void>(response)
 }
 
+// ==========================================
+// AUTOMATIC ACCESS TOKEN REFRESH
+// ==========================================
+
+async function refreshAccessToken(): Promise<AuthResponse> {
+  if (!refreshPromise) {
+    refreshPromise = refreshSession()
+      .then((response) => {
+        currentAccessToken = response.access_token
+        authCallbacks?.onTokenRefreshed(response)
+
+        return response
+      })
+      .catch((error) => {
+        currentAccessToken = null
+        authCallbacks?.onAuthExpired()
+
+        throw error
+      })
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+
+  return refreshPromise
+}
+
+// Send an authenticated request and retry once after refreshing a 401.
+export async function authenticatedFetch(
+  url: string | URL,
+  options: RequestInit = {},
+  accessToken: string
+): Promise<Response> {
+  if (!currentAccessToken) {
+    currentAccessToken = accessToken
+  }
+
+  const makeRequest = (token: string) => {
+    const headers = new Headers(options.headers)
+    headers.set("Authorization", `Bearer ${token}`)
+
+    return fetch(url, {
+      ...options,
+      headers,
+      credentials: options.credentials ?? "include",
+    })
+  }
+
+  const firstResponse = await makeRequest(accessToken)
+
+  if (firstResponse.status !== 401) {
+    return firstResponse
+  }
+
+  let retryToken: string
+
+  // Another request may already have refreshed the token.
+  if (
+    currentAccessToken &&
+    currentAccessToken !== accessToken
+  ) {
+    retryToken = currentAccessToken
+  } else {
+    const refreshed = await refreshAccessToken()
+    retryToken = refreshed.access_token
+  }
+
+  const retryResponse = await makeRequest(retryToken)
+
+  // Do not retry indefinitely if the refreshed token is also rejected.
+  if (retryResponse.status === 401) {
+    currentAccessToken = null
+    authCallbacks?.onAuthExpired()
+  }
+
+  return retryResponse
+}
+
+// ==========================================
+// USER PROFILE APIs
+// ==========================================
+
 // Get the currently authenticated user's profile.
 export async function getCurrentUser(
   accessToken: string
 ): Promise<AuthUser> {
-  const response = await fetch(`${API_URL}/me`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  })
+  const response = await authenticatedFetch(
+    `${API_URL}/me`,
+    {},
+    accessToken
+  )
 
   return handleResponse<AuthUser>(response)
 }
@@ -135,14 +244,17 @@ export async function updateProfile(
   data: ProfileUpdateData,
   accessToken: string
 ): Promise<AuthUser> {
-  const response = await fetch(`${API_URL}/me`, {
-    method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+  const response = await authenticatedFetch(
+    `${API_URL}/me`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
     },
-    body: JSON.stringify(data),
-  })
+    accessToken
+  )
 
   return handleResponse<AuthUser>(response)
 }
@@ -152,15 +264,17 @@ export async function changePassword(
   data: PasswordChangeData,
   accessToken: string
 ): Promise<{ message: string }> {
-  const response = await fetch(`${API_URL}/change-password`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+  const response = await authenticatedFetch(
+    `${API_URL}/change-password`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
     },
-    credentials: "include",
-    body: JSON.stringify(data),
-  })
+    accessToken
+  )
 
   return handleResponse<{ message: string }>(response)
 }

@@ -11,6 +11,8 @@ import type {
   UpdateGroupRequestData,
 } from "../types/group"
 
+import { authenticatedFetch } from "./auth"
+
 const API_URL = "/api/groups"
 
 // Handle API responses and errors
@@ -55,11 +57,12 @@ export async function getGroups(
   accessToken: string,
   includeArchived = true
 ): Promise<Group[]> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}?include_archived=${includeArchived}`,
     {
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<Group[]>(response)
@@ -70,11 +73,15 @@ export async function createGroup(
   data: CreateGroupData,
   accessToken: string
 ): Promise<Group> {
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: getJsonHeaders(accessToken),
-    body: JSON.stringify(data),
-  })
+  const response = await authenticatedFetch(
+    API_URL,
+    {
+      method: "POST",
+      headers: getJsonHeaders(accessToken),
+      body: JSON.stringify(data),
+    },
+    accessToken
+  )
 
   return handleResponse<Group>(response)
 }
@@ -84,11 +91,12 @@ export async function getGroup(
   groupId: string,
   accessToken: string
 ): Promise<Group> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}`,
     {
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<Group>(response)
@@ -100,13 +108,14 @@ export async function updateGroup(
   data: UpdateGroupData,
   accessToken: string
 ): Promise<Group> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}`,
     {
       method: "PATCH",
       headers: getJsonHeaders(accessToken),
       body: JSON.stringify(data),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<Group>(response)
@@ -117,12 +126,13 @@ export async function archiveGroup(
   groupId: string,
   accessToken: string
 ): Promise<Group> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/archive`,
     {
       method: "POST",
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<Group>(response)
@@ -133,12 +143,13 @@ export async function unarchiveGroup(
   groupId: string,
   accessToken: string
 ): Promise<Group> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/unarchive`,
     {
       method: "POST",
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<Group>(response)
@@ -149,12 +160,13 @@ export async function deleteGroup(
   groupId: string,
   accessToken: string
 ): Promise<Record<string, string>> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}`,
     {
       method: "DELETE",
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<Record<string, string>>(response)
@@ -169,11 +181,12 @@ export async function getGroupMembers(
   groupId: string,
   accessToken: string
 ): Promise<GroupMember[]> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/members`,
     {
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<GroupMember[]>(response)
@@ -185,13 +198,14 @@ export async function addGroupMember(
   data: AddGroupMemberData,
   accessToken: string
 ): Promise<GroupMember> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/members`,
     {
       method: "POST",
       headers: getJsonHeaders(accessToken),
       body: JSON.stringify(data),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<GroupMember>(response)
@@ -204,13 +218,14 @@ export async function updateGroupMemberPermissions(
   data: UpdateGroupMemberPermissions,
   accessToken: string
 ): Promise<GroupMember> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
     {
       method: "PATCH",
       headers: getJsonHeaders(accessToken),
       body: JSON.stringify(data),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<GroupMember>(response)
@@ -222,12 +237,13 @@ export async function removeGroupMember(
   userId: string,
   accessToken: string
 ): Promise<Record<string, string>> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
     {
       method: "DELETE",
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<Record<string, string>>(response)
@@ -242,11 +258,12 @@ export async function getGroupRequests(
   groupId: string,
   accessToken: string
 ): Promise<GroupRequest[]> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/requests`,
     {
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<GroupRequest[]>(response)
@@ -258,13 +275,14 @@ export async function createGroupRequest(
   data: CreateGroupRequestData,
   accessToken: string
 ): Promise<GroupRequest> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/requests`,
     {
       method: "POST",
       headers: getJsonHeaders(accessToken),
       body: JSON.stringify(data),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<GroupRequest>(response)
@@ -276,11 +294,12 @@ export async function getGroupRequest(
   requestId: number,
   accessToken: string
 ): Promise<GroupRequest> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/requests/${requestId}`,
     {
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<GroupRequest>(response)
@@ -293,13 +312,14 @@ export async function updateGroupRequest(
   data: UpdateGroupRequestData,
   accessToken: string
 ): Promise<GroupRequest> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/requests/${requestId}`,
     {
       method: "PUT",
       headers: getJsonHeaders(accessToken),
       body: JSON.stringify(data),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<GroupRequest>(response)
@@ -311,12 +331,13 @@ export async function deleteGroupRequest(
   requestId: number,
   accessToken: string
 ): Promise<Record<string, string>> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/requests/${requestId}`,
     {
       method: "DELETE",
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<Record<string, string>>(response)
@@ -329,7 +350,7 @@ export async function assignGroupRequestStaff(
   staffId: string,
   accessToken: string
 ): Promise<GroupRequest> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/requests/${requestId}/assign`,
     {
       method: "PATCH",
@@ -337,7 +358,8 @@ export async function assignGroupRequestStaff(
       body: JSON.stringify({
         staff_id: staffId,
       }),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<GroupRequest>(response)
@@ -349,12 +371,13 @@ export async function unassignGroupRequestStaff(
   requestId: number,
   accessToken: string
 ): Promise<GroupRequest> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/${encodeURIComponent(groupId)}/requests/${requestId}/assign`,
     {
       method: "DELETE",
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<GroupRequest>(response)

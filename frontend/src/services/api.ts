@@ -5,6 +5,8 @@ import type {
   ServiceRequest,
 } from "../types/request"
 
+import { authenticatedFetch } from "./auth"
+
 const API_URL = "/api"
 
 // ==========================================
@@ -187,9 +189,13 @@ function buildQueryString(values: object): string {
 export async function getRequests(
   accessToken: string
 ): Promise<ServiceRequest[]> {
-  const response = await fetch(`${API_URL}/requests`, {
-    headers: getAuthHeaders(accessToken),
-  })
+  const response = await authenticatedFetch(
+    `${API_URL}/requests`,
+    {
+      headers: getAuthHeaders(accessToken),
+    },
+    accessToken
+  )
 
   return handleResponse<ServiceRequest[]>(response)
 }
@@ -198,9 +204,13 @@ export async function getRequestById(
   id: number,
   accessToken: string
 ): Promise<ServiceRequest> {
-  const response = await fetch(`${API_URL}/requests/${id}`, {
-    headers: getAuthHeaders(accessToken),
-  })
+  const response = await authenticatedFetch(
+    `${API_URL}/requests/${id}`,
+    {
+      headers: getAuthHeaders(accessToken),
+    },
+    accessToken
+  )
 
   return handleResponse<ServiceRequest>(response)
 }
@@ -209,14 +219,18 @@ export async function createRequest(
   data: RequestForm,
   accessToken: string
 ): Promise<ServiceRequest> {
-  const response = await fetch(`${API_URL}/requests`, {
-    method: "POST",
-    headers: {
-      ...getAuthHeaders(accessToken),
-      "Content-Type": "application/json",
+  const response = await authenticatedFetch(
+    `${API_URL}/requests`,
+    {
+      method: "POST",
+      headers: {
+        ...getAuthHeaders(accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
     },
-    body: JSON.stringify(data),
-  })
+    accessToken
+  )
 
   return handleResponse<ServiceRequest>(response)
 }
@@ -226,14 +240,18 @@ export async function updateRequest(
   data: EditForm,
   accessToken: string
 ): Promise<ServiceRequest> {
-  const response = await fetch(`${API_URL}/requests/${id}`, {
-    method: "PUT",
-    headers: {
-      ...getAuthHeaders(accessToken),
-      "Content-Type": "application/json",
+  const response = await authenticatedFetch(
+    `${API_URL}/requests/${id}`,
+    {
+      method: "PUT",
+      headers: {
+        ...getAuthHeaders(accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
     },
-    body: JSON.stringify(data),
-  })
+    accessToken
+  )
 
   return handleResponse<ServiceRequest>(response)
 }
@@ -242,10 +260,14 @@ export async function deleteRequest(
   id: number,
   accessToken: string
 ): Promise<void> {
-  const response = await fetch(`${API_URL}/requests/${id}`, {
-    method: "DELETE",
-    headers: getAuthHeaders(accessToken),
-  })
+  const response = await authenticatedFetch(
+    `${API_URL}/requests/${id}`,
+    {
+      method: "DELETE",
+      headers: getAuthHeaders(accessToken),
+    },
+    accessToken
+  )
 
   return handleResponse<void>(response)
 }
@@ -253,9 +275,13 @@ export async function deleteRequest(
 export async function getStaff(
   accessToken: string
 ): Promise<StaffMember[]> {
-  const response = await fetch(`${API_URL}/staff`, {
-    headers: getAuthHeaders(accessToken),
-  })
+  const response = await authenticatedFetch(
+    `${API_URL}/staff`,
+    {
+      headers: getAuthHeaders(accessToken),
+    },
+    accessToken
+  )
 
   return handleResponse<StaffMember[]>(response)
 }
@@ -265,7 +291,7 @@ export async function assignStaff(
   staffId: string,
   accessToken: string
 ): Promise<ServiceRequest> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/requests/${requestId}/assign`,
     {
       method: "PATCH",
@@ -274,7 +300,8 @@ export async function assignStaff(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ staff_id: staffId }),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<ServiceRequest>(response)
@@ -284,12 +311,13 @@ export async function unassignStaff(
   requestId: number,
   accessToken: string
 ): Promise<ServiceRequest> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/requests/${requestId}/assign`,
     {
       method: "DELETE",
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<ServiceRequest>(response)
@@ -302,9 +330,13 @@ export async function unassignStaff(
 export async function getAdminDashboardStats(
   accessToken: string
 ): Promise<AdminDashboardStats> {
-  const response = await fetch(`${API_URL}/admin/dashboard/stats`, {
-    headers: getAuthHeaders(accessToken),
-  })
+  const response = await authenticatedFetch(
+    `${API_URL}/admin/dashboard/stats`,
+    {
+      headers: getAuthHeaders(accessToken),
+    },
+    accessToken
+  )
 
   return handleResponse<AdminDashboardStats>(response)
 }
@@ -313,11 +345,12 @@ export async function getRecentAdminUsers(
   accessToken: string,
   limit = 5
 ): Promise<RecentAdminUser[]> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/admin/dashboard/recent-users${buildQueryString({ limit })}`,
     {
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<RecentAdminUser[]>(response)
@@ -327,25 +360,31 @@ export async function getAdminUsers(
   accessToken: string,
   filters: AdminUserFilters = {}
 ): Promise<AdminUserList> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/admin/users${buildQueryString(filters)}`,
     {
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<AdminUserList>(response)
 }
 
+// ==========================================
+// ADMIN USER DETAILS — PR #25
+// ==========================================
+
 export async function getAdminUserDetail(
   userId: string,
   accessToken: string
 ): Promise<AdminUserDetail> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/admin/users/${encodeURIComponent(userId)}`,
     {
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<AdminUserDetail>(response)
@@ -356,7 +395,7 @@ export async function banAdminUser(
   reason: string,
   accessToken: string
 ): Promise<AdminUser> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/admin/users/${encodeURIComponent(userId)}/ban`,
     {
       method: "POST",
@@ -365,7 +404,8 @@ export async function banAdminUser(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ reason }),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<AdminUser>(response)
@@ -375,12 +415,13 @@ export async function unbanAdminUser(
   userId: string,
   accessToken: string
 ): Promise<AdminUser> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/admin/users/${encodeURIComponent(userId)}/unban`,
     {
       method: "POST",
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<AdminUser>(response)
@@ -391,7 +432,7 @@ export async function changeAdminUserRole(
   role: string,
   accessToken: string
 ): Promise<AdminUser> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/admin/users/${encodeURIComponent(userId)}/role`,
     {
       method: "PATCH",
@@ -400,7 +441,8 @@ export async function changeAdminUserRole(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ role }),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<AdminUser>(response)
@@ -414,11 +456,12 @@ export async function getAdminAuditLogs(
   accessToken: string,
   filters: AuditLogFilters = {}
 ): Promise<AuditLogList> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/admin/audit-logs${buildQueryString(filters)}`,
     {
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   return handleResponse<AuditLogList>(response)
@@ -433,11 +476,12 @@ export async function exportAdminAuditLogs(
   delete exportFilters.page
   delete exportFilters.page_size
 
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_URL}/admin/audit-logs/export${buildQueryString(exportFilters)}`,
     {
       headers: getAuthHeaders(accessToken),
-    }
+    },
+    accessToken
   )
 
   if (!response.ok) {

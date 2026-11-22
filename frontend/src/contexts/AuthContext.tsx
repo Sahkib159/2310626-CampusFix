@@ -19,6 +19,8 @@ import {
   signup as signupRequest,
   logout as logoutRequest,
   refreshSession,
+  registerAuthCallbacks,
+  setCurrentAccessToken,
 } from "../services/auth"
 
 interface AuthContextType {
@@ -38,9 +40,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Prevent duplicate refresh requests in React StrictMode.
   const restorationStarted = useRef(false)
 
+  // Keep the shared authentication helper synchronized with React state.
+  useEffect(() => {
+    return registerAuthCallbacks({
+      onTokenRefreshed: (response) => {
+        setUser(response.user)
+        setAccessToken(response.access_token)
+      },
+      onAuthExpired: () => {
+        setCurrentAccessToken(null)
+        setUser(null)
+        setAccessToken(null)
+      },
+    })
+  }, [])
+
+  // Restore the session when the application starts.
   useEffect(() => {
     if (restorationStarted.current) return
 
@@ -50,9 +67,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const response = await refreshSession()
 
+        setCurrentAccessToken(response.access_token)
         setUser(response.user)
         setAccessToken(response.access_token)
       } catch {
+        setCurrentAccessToken(null)
         setUser(null)
         setAccessToken(null)
       } finally {
@@ -66,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function login(data: LoginData) {
     const response = await loginRequest(data)
 
+    setCurrentAccessToken(response.access_token)
     setUser(response.user)
     setAccessToken(response.access_token)
   }
@@ -73,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signup(data: SignupData) {
     const response = await signupRequest(data)
 
+    setCurrentAccessToken(response.access_token)
     setUser(response.user)
     setAccessToken(response.access_token)
   }
@@ -81,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await logoutRequest()
     } finally {
+      setCurrentAccessToken(null)
       setUser(null)
       setAccessToken(null)
     }
