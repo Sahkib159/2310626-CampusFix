@@ -14,8 +14,18 @@ class User(SQLModel, table=True):
     password_hash: str = Field(max_length=255)
     role: str = Field(default="STUDENT", max_length=20)
 
-    # Account status: inactive accounts cannot authenticate.
+    # Account status
     is_active: bool = Field(default=True)
+
+    # Administrative ban information
+    is_banned: bool = Field(default=False)
+    ban_reason: str | None = Field(default=None, max_length=500)
+    banned_at: datetime | None = Field(default=None)
+    banned_by: UUID | None = Field(
+        default=None,
+        foreign_key="users.id",
+        ondelete="SET NULL",
+    )
 
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)

@@ -1,0 +1,593 @@
+/* CampusFix visual polish layer
+   Add this after index.css in main.tsx.
+   This file only changes presentation; it does not alter application logic.
+*/
+
+:root {
+  --cf-ink: #172554;
+  --cf-muted: #64748b;
+  --cf-blue: #315fce;
+  --cf-blue-dark: #2349a8;
+  --cf-border: #e2e8f0;
+  --cf-surface: #ffffff;
+  --cf-page: #f5f7fc;
+  --cf-shadow: 0 12px 34px rgba(15, 23, 42, 0.055);
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--cf-page);
+}
+
+body {
+  color: #1e293b;
+  background:
+    radial-gradient(ellipse at 8% 0%, rgba(219, 234, 254, 0.42), transparent 32rem),
+    var(--cf-page);
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a {
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgba(49, 95, 206, 0.25);
+  outline-offset: 2px;
+}
+
+.app,
+.admin-app {
+  width: min(1460px, 92%);
+  padding-top: 30px;
+}
+
+.panel,
+.stat-card,
+.admin-panel,
+.admin-stat-card,
+.group-card,
+.group-members-section,
+.group-add-member-panel,
+.group-requests-section,
+.profile-account-summary {
+  border-color: var(--cf-border);
+  box-shadow: var(--cf-shadow);
+}
+
+.panel {
+  padding: clamp(20px, 2.5vw, 28px);
+  border-radius: 18px;
+}
+
+.topbar {
+  margin-bottom: 26px;
+}
+
+.topbar h1,
+.admin-heading h2,
+.profile-heading h2 {
+  color: var(--cf-ink);
+  letter-spacing: -1.25px;
+}
+
+.eyebrow,
+.admin-eyebrow {
+  letter-spacing: 1.7px;
+}
+
+.subtitle,
+.panel-description {
+  color: #718096;
+}
+
+.primary-button,
+.auth-submit {
+  background: linear-gradient(135deg, #3769d6, #244fb5);
+  box-shadow: 0 6px 15px rgba(49, 95, 206, 0.14);
+}
+
+.primary-button:hover,
+.auth-submit:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2e5fc8, #1d429f);
+  box-shadow: 0 9px 22px rgba(49, 95, 206, 0.22);
+}
+
+.secondary-button,
+.refresh-button,
+.admin-secondary-button,
+.admin-refresh-button,
+.profile-back-button {
+  border-radius: 10px;
+}
+
+.request-card,
+.group-card,
+.group-member-card,
+.group-request-card {
+  border-color: #e5eaf2;
+  border-radius: 14px;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.request-card:hover,
+.group-card:hover,
+.group-member-card:hover,
+.group-request-card:hover {
+  border-color: #c7d7f8;
+  box-shadow: 0 12px 28px rgba(30, 64, 175, 0.075);
+}
+
+.request-card:hover,
+.group-card.clickable:hover,
+.group-request-card:hover {
+  transform: translateY(-2px);
+}
+
+.request-form input,
+.request-form textarea,
+.request-form select,
+.edit-status select,
+.groups-form input,
+.groups-form textarea,
+.group-add-form input,
+.group-request-form input,
+.group-request-form textarea,
+.auth-form input,
+.profile-form input,
+.admin-filter-panel input,
+.admin-filter-panel select {
+  border-radius: 10px;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.request-form input:focus,
+.request-form textarea:focus,
+.request-form select:focus,
+.edit-status select:focus,
+.groups-form input:focus,
+.groups-form textarea:focus,
+.group-add-form input:focus,
+.group-request-form input:focus,
+.group-request-form textarea:focus,
+.profile-form input:focus,
+.admin-filter-panel input:focus,
+.admin-filter-panel select:focus {
+  border-color: #7da0eb;
+  box-shadow: 0 0 0 4px rgba(49, 95, 206, 0.09);
+}
+
+/* Main navigation */
+.dashboard-header {
+  position: relative;
+  margin-bottom: 30px;
+  padding: 18px 22px;
+  border: 1px solid rgba(219, 228, 242, 0.95);
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.055);
+}
+
+.dashboard-logo {
+  border-radius: 14px;
+  box-shadow: 0 7px 16px rgba(37, 99, 235, 0.2);
+}
+
+.dashboard-brand h1 {
+  letter-spacing: -1.1px;
+}
+
+.dashboard-refresh,
+.dashboard-logout {
+  border-radius: 10px;
+}
+
+/* Student home and request list */
+.stats-grid {
+  gap: 16px;
+}
+
+.stat-card {
+  border-radius: 16px;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.07);
+}
+
+.stat-card strong {
+  color: var(--cf-ink);
+  letter-spacing: -1px;
+}
+
+.content-grid {
+  gap: 20px;
+}
+
+.request-heading h2,
+.request-heading h3 {
+  color: var(--cf-ink);
+}
+
+.request-count {
+  border-radius: 999px;
+}
+
+/* Groups */
+.groups-page {
+  gap: 24px;
+}
+
+.groups-hero {
+  border-radius: 20px;
+  box-shadow: 0 14px 32px rgba(37, 78, 165, 0.13);
+}
+
+.groups-layout {
+  gap: 22px;
+}
+
+.groups-create-panel,
+.groups-list-panel {
+  border-radius: 18px;
+}
+
+.groups-card-list {
+  gap: 16px;
+}
+
+.group-card {
+  padding: 21px;
+}
+
+.group-card h3 {
+  color: var(--cf-ink);
+  letter-spacing: -0.25px;
+}
+
+.group-card-icon,
+.groups-empty-icon,
+.group-stat-icon,
+.group-member-avatar {
+  border-radius: 13px;
+}
+
+.group-stat-card {
+  border: 1px solid var(--cf-border);
+  border-radius: 15px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+}
+
+/* Group details and shared requests */
+.group-details-page {
+  gap: 22px;
+}
+
+.group-details-hero {
+  border-radius: 20px;
+  box-shadow: 0 14px 32px rgba(37, 78, 165, 0.14);
+}
+
+.group-details-stats {
+  gap: 16px;
+}
+
+.group-details-stat {
+  border-radius: 16px;
+  box-shadow: var(--cf-shadow);
+}
+
+.group-members-section,
+.group-add-member-panel,
+.group-requests-section {
+  border-radius: 18px;
+}
+
+.group-member-card {
+  padding: 20px;
+}
+
+.group-request-form {
+  border-radius: 15px;
+}
+
+/* Profile */
+.profile-page {
+  gap: 22px;
+}
+
+.profile-grid {
+  gap: 20px;
+}
+
+.profile-card {
+  border-radius: 18px;
+}
+
+.profile-account-summary {
+  background: linear-gradient(135deg, #f8faff, #f1f5ff);
+  border-radius: 14px;
+}
+
+.profile-avatar,
+.user-avatar {
+  border: 3px solid #fff;
+  box-shadow: 0 3px 12px rgba(49, 95, 206, 0.12);
+}
+
+/* Authentication */
+.auth-shell {
+  background: #f4f7fc;
+}
+
+.auth-showcase {
+  background:
+    radial-gradient(circle at 12% 88%, rgba(83, 135, 240, 0.3), transparent 36%),
+    linear-gradient(150deg, #10234a 0%, #173d78 58%, #2e61c9 100%);
+}
+
+.auth-card {
+  border-color: #e5eaf3;
+  box-shadow: 0 24px 75px rgba(15, 23, 42, 0.09);
+}
+
+.auth-card-brand .brand-icon {
+  background: linear-gradient(135deg, #3769d6, #244fb5);
+}
+
+.auth-heading h2 {
+  color: var(--cf-ink);
+}
+
+.auth-submit {
+  border-radius: 11px;
+}
+
+/* Admin dashboard */
+.admin-app {
+  padding-bottom: 64px;
+}
+
+.admin-heading {
+  margin-top: 4px;
+  margin-bottom: 25px;
+}
+
+.admin-heading h2 {
+  font-size: clamp(29px, 4vw, 39px);
+}
+
+.admin-tabs {
+  gap: 8px;
+  padding: 7px;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.045);
+}
+
+.admin-tabs button {
+  padding: 11px 19px;
+  border-radius: 10px;
+}
+
+.admin-tabs button.active {
+  background: linear-gradient(135deg, #3769d6, #244fb5);
+  box-shadow: 0 5px 13px rgba(49, 95, 206, 0.2);
+}
+
+.admin-stats-grid {
+  gap: 16px;
+}
+
+.admin-stat-card {
+  min-height: 138px;
+  border-radius: 16px;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.admin-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.07);
+}
+
+.admin-stat-card strong {
+  color: var(--cf-ink);
+  font-size: 34px;
+}
+
+.admin-panel {
+  padding: 23px;
+  border-radius: 16px;
+}
+
+.admin-filter-panel {
+  padding: 19px;
+  border-radius: 15px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.035);
+}
+
+.admin-table-wrap {
+  border: 1px solid #edf1f6;
+  border-radius: 12px;
+}
+
+.admin-table {
+  min-width: 680px;
+}
+
+.admin-table th {
+  padding: 14px;
+  background: #f7f9fd;
+}
+
+.admin-table td {
+  padding: 15px 14px;
+}
+
+.admin-table tbody tr {
+  transition: background 140ms ease;
+}
+
+.admin-table tbody tr:hover {
+  background: #f7faff;
+}
+
+.admin-user-avatar {
+  border-radius: 12px;
+}
+
+.admin-role-badge,
+.admin-status-badge {
+  letter-spacing: 0.15px;
+}
+
+.admin-pagination {
+  padding-top: 18px;
+}
+
+.admin-action-button {
+  border-radius: 9px;
+}
+
+/* Request detail page */
+.details-content {
+  display: grid;
+  grid-template-columns: minmax(110px, 170px) minmax(0, 1fr);
+  gap: 12px 22px;
+  margin: 25px 0;
+  padding: 22px;
+  background: #f8faff;
+  border: 1px solid #e8eef8;
+  border-radius: 14px;
+}
+
+.details-content h3 {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+}
+
+.details-content p {
+  margin: 0;
+  color: #1e293b;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.details-content .request-description {
+  margin: 0;
+}
+
+/* Loading and empty states */
+.auth-loading,
+.admin-loading,
+.empty-state,
+.admin-empty {
+  color: #718096;
+}
+
+@media (max-width: 900px) {
+  .app,
+  .admin-app {
+    width: min(100% - 32px, 760px);
+  }
+
+  .admin-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-filter-panel,
+  .admin-audit-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .app,
+  .admin-app {
+    width: calc(100% - 28px);
+    padding-top: 20px;
+  }
+
+  .dashboard-header {
+    padding: 16px;
+    border-radius: 15px;
+  }
+
+  .panel,
+  .admin-panel {
+    padding: 18px;
+    border-radius: 15px;
+  }
+
+  .profile-grid,
+  .admin-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-tabs button {
+    padding: 10px 7px;
+    font-size: 12px;
+  }
+
+  .admin-filter-panel,
+  .admin-audit-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .details-content {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .details-content p {
+    margin-bottom: 12px;
+  }
+
+  .group-details-hero {
+    padding: 23px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

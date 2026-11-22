@@ -124,20 +124,38 @@ export default function RequestList({
                 {/* Admin staff assignment controls */}
                 {isAdmin && (
                   <div className="staff-assignment">
-                    <h4>Staff assignment</h4>
+                    <div className="staff-assignment-heading">
+                      <div>
+                        <h4>Staff assignment</h4>
+                        <p className="panel-description">
+                          Assign this request to a staff member.
+                        </p>
+                      </div>
 
-                    <p className="panel-description">
-                      {assignedStaff
-                        ? `Currently assigned to: ${assignedStaff.name}`
-                        : assignedTo
-                          ? "A staff member is assigned."
-                          : "This request has not been assigned yet."}
-                    </p>
+                      <span
+                        className={`staff-assignment-status ${
+                          assignedTo ? "is-assigned" : "is-unassigned"
+                        }`}
+                      >
+                        {assignedTo ? "Assigned" : "Unassigned"}
+                      </span>
+                    </div>
 
-                    <label>
-                      Select staff member
+                    {assignedStaff && (
+                      <p className="staff-current-assignment">
+                        Currently assigned to{" "}
+                        <strong>{assignedStaff.name}</strong>
+                      </p>
+                    )}
+
+                    <div className="staff-select-group">
+                      <label htmlFor={`staff-select-${request.id}`}>
+                        Select staff member
+                      </label>
 
                       <select
+                        id={`staff-select-${request.id}`}
+                        className="staff-member-select"
                         value={
                           selectedStaffIds[request.id] ??
                           assignedTo ??
@@ -157,7 +175,7 @@ export default function RequestList({
                           </option>
                         ))}
                       </select>
-                    </label>
+                    </div>
 
                     {staff.length === 0 && (
                       <p className="empty-state">
@@ -166,7 +184,7 @@ export default function RequestList({
                       </p>
                     )}
 
-                    <div className="request-actions">
+                    <div className="request-actions staff-assignment-actions">
                       <button
                         className="primary-button small-button"
                         type="button"

@@ -1,6 +1,10 @@
 
 const API_URL = "/api/auth"
 
+// ==========================================
+// TYPES
+// ==========================================
+
 export interface AuthUser {
   id: string
   name: string
@@ -36,6 +40,10 @@ export interface PasswordChangeData {
   new_password: string
 }
 
+// ==========================================
+// SHARED RESPONSE HANDLER
+// ==========================================
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let message = `Request failed (${response.status})`
@@ -56,6 +64,10 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
   return response.json() as Promise<T>
 }
+
+// ==========================================
+// AUTHENTICATION APIs
+// ==========================================
 
 // Register a new student account.
 export async function signup(data: SignupData): Promise<AuthResponse> {

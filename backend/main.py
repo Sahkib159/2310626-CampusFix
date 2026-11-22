@@ -8,10 +8,14 @@ from database import engine
 
 from app.models.service_request import ServiceRequest
 from app.models.group import Group, GroupMember
+from app.models.audit_log import AuditLog
+
 from app.service_requests.router import router as request_router
 from app.auth.router import router as auth_router
 from app.staff.router import router as staff_router
 from app.groups.router import router as group_router
+from app.admin.router import router as admin_router
+from app.audit.router import router as audit_router
 
 
 @asynccontextmanager
@@ -32,6 +36,8 @@ app.include_router(request_router)
 app.include_router(auth_router)
 app.include_router(staff_router)
 app.include_router(group_router)
+app.include_router(admin_router)
+app.include_router(audit_router)
 
 
 @app.get("/api/health")

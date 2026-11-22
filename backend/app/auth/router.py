@@ -3,9 +3,10 @@ import os
 from ipaddress import ip_address
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from database import get_session
+
 from app.models.user import User
 from app.auth import schemas, service
 from app.auth.config import (
@@ -15,9 +16,13 @@ from app.auth.config import (
     COOKIE_SAMESITE,
 )
 from app.auth.dependencies import get_current_user
+from app.audit.service import record_event
 
 
-router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+router = APIRouter(
+    prefix="/api/auth",
+    tags=["Authentication"],
+)
 
 
 def get_client_ip(request: Request) -> str:
@@ -33,7 +38,8 @@ def get_client_ip(request: Request) -> str:
         forwarded_ip = request.headers.get("x-forwarded-for")
 
         try:
-            return str(ip_address(forwarded_ip.strip()))
+            first_ip = forwarded_ip.split(",")[0].strip()
+            return str(ip_address(first_ip))
         except (ValueError, AttributeError):
             return "unknown"
 
@@ -44,7 +50,10 @@ def get_client_ip(request: Request) -> str:
     )
 
 
-def set_refresh_cookie(response: Response, refresh_token: str) -> None:
+def set_refresh_cookie(
+    response: Response,
+    refresh_token: str,
+) -> None:
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
         value=refresh_token,
@@ -63,22 +72,44 @@ def set_refresh_cookie(response: Response, refresh_token: str) -> None:
 )
 def signup(
     data: schemas.SignupRequest,
+    request: Request,
     response: Response,
     session: Session = Depends(get_session),
 ):
     try:
         result = service.signup(session, data)
+
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         )
 
-    set_refresh_cookie(response, result["refresh_token"])
+    user = session.exec(
+        select(User).where(User.email == data.email)
+    ).first()
+
+    record_event(
+        session,
+        "ACCOUNT_REGISTERED",
+        request,
+        actor_id=user.id if user else None,
+        target_user_id=user.id if user else None,
+        email=data.email,
+    )
+
+    set_refresh_cookie(
+        response,
+        result["refresh_token"],
+    )
+
     return result["response"]
 
 
-@router.post("/login", response_model=schemas.TokenResponse)
+@router.post(
+    "/login",
+    response_model=schemas.TokenResponse,
+)
 def login(
     data: schemas.LoginRequest,
     request: Request,
@@ -95,22 +126,62 @@ def login(
         )
 
     except service.LoginRateLimitError as exc:
+        record_event(
+            session,
+            "LOGIN_RATE_LIMITED",
+            request,
+            email=data.email,
+            details={
+                "reason": "Login rate limit exceeded",
+            },
+        )
+
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=str(exc),
         )
 
     except ValueError as exc:
+        record_event(
+            session,
+            "LOGIN_FAILED",
+            request,
+            email=data.email,
+            details={
+                "reason": "Invalid credentials or unavailable account",
+            },
+        )
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
         )
 
-    set_refresh_cookie(response, result["refresh_token"])
+    user = session.exec(
+        select(User).where(User.email == data.email)
+    ).first()
+
+    record_event(
+        session,
+        "LOGIN_SUCCESS",
+        request,
+        actor_id=user.id if user else None,
+        target_user_id=user.id if user else None,
+        email=data.email,
+    )
+
+    set_refresh_cookie(
+        response,
+        result["refresh_token"],
+    )
+
     return result["response"]
 
 
-@router.post("/refresh", response_model=schemas.TokenResponse)
+@router.post(
+    "/refresh",
+    response_model=schemas.TokenResponse,
+)
 def refresh(
     request: Request,
     response: Response,
@@ -125,18 +196,27 @@ def refresh(
         )
 
     try:
-        result = service.refresh_session(session, refresh_token)
+        result = service.refresh_session(
+            session,
+            refresh_token,
+        )
+
     except ValueError as exc:
         response.delete_cookie(
             key=REFRESH_COOKIE_NAME,
             path="/api/auth",
         )
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
         )
 
-    set_refresh_cookie(response, result["refresh_token"])
+    set_refresh_cookie(
+        response,
+        result["refresh_token"],
+    )
+
     return result["response"]
 
 
@@ -149,17 +229,32 @@ def logout(
     refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
 
     if refresh_token:
-        service.logout(session, refresh_token)
+        service.logout(
+            session,
+            refresh_token,
+        )
+
+    # Never store refresh tokens in audit logs.
+    record_event(
+        session,
+        "LOGOUT",
+        request,
+    )
 
     response.delete_cookie(
         key=REFRESH_COOKIE_NAME,
         path="/api/auth",
     )
 
-    return {"message": "Logged out successfully."}
+    return {
+        "message": "Logged out successfully."
+    }
 
 
-@router.get("/me", response_model=schemas.UserResponse)
+@router.get(
+    "/me",
+    response_model=schemas.UserResponse,
+)
 def get_me(
     current_user: User = Depends(get_current_user),
 ):
@@ -171,7 +266,10 @@ def get_me(
     )
 
 
-@router.patch("/me", response_model=schemas.UserResponse)
+@router.patch(
+    "/me",
+    response_model=schemas.UserResponse,
+)
 def update_me(
     data: schemas.ProfileUpdateRequest,
     current_user: User = Depends(get_current_user),
@@ -183,6 +281,7 @@ def update_me(
             current_user,
             data,
         )
+
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -200,6 +299,7 @@ def update_me(
 @router.post("/change-password")
 def change_password(
     data: schemas.PasswordChangeRequest,
+    request: Request,
     response: Response,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
@@ -210,11 +310,21 @@ def change_password(
             current_user,
             data,
         )
+
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         )
+
+    record_event(
+        session,
+        "PASSWORD_CHANGED",
+        request,
+        actor_id=current_user.id,
+        target_user_id=current_user.id,
+        email=current_user.email,
+    )
 
     response.delete_cookie(
         key=REFRESH_COOKIE_NAME,
@@ -231,7 +341,10 @@ def get_sessions(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    return service.get_user_sessions(session, current_user.id)
+    return service.get_user_sessions(
+        session,
+        current_user.id,
+    )
 
 
 @router.delete("/sessions/{session_id}")
@@ -246,6 +359,7 @@ def revoke_session(
             current_user.id,
             session_id,
         )
+
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
