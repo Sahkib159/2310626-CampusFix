@@ -228,17 +228,23 @@ def logout(
 ):
     refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
 
+    logout_user = None
+
     if refresh_token:
-        service.logout(
+        logout_user = service.logout(
             session,
             refresh_token,
         )
 
     # Never store refresh tokens in audit logs.
+    # Record the user identity when the refresh token is valid.
     record_event(
         session,
         "LOGOUT",
         request,
+        actor_id=logout_user.id if logout_user else None,
+        target_user_id=logout_user.id if logout_user else None,
+        email=logout_user.email if logout_user else None,
     )
 
     response.delete_cookie(

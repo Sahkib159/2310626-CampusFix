@@ -1,6 +1,7 @@
 
 import csv
 import io
+import re
 from datetime import datetime
 from uuid import UUID
 
@@ -31,6 +32,34 @@ def validate_date_range(
             status_code=400,
             detail="start_date cannot be later than end_date.",
         )
+
+
+def sanitize_csv_cell(value: str | None) -> str:
+    """
+    Prevent CSV formula injection in spreadsheet applications.
+
+    Prefixes dangerous text cells with an apostrophe when they begin
+    with a formula character (=, +, -, @), possibly after whitespace
+    or control characters. Also handles cells beginning with control
+    characters such as tabs and newlines.
+    """
+    if value is None:
+        return ""
+
+    text = str(value)
+
+    if not text:
+        return ""
+
+    stripped = text.lstrip(" \t\r\n\v\f\x00")
+
+    if (
+        text[0] in "\t\r\n"
+        or re.match(r"^[=+\-@]", stripped)
+    ):
+        return "'" + text
+
+    return text
 
 
 @router.get("", response_model=AuditLogListResponse)
@@ -105,11 +134,11 @@ def export_audit_logs_csv(
             record.id,
             record.actor_id or "",
             record.target_user_id or "",
-            record.action,
-            record.email or "",
-            record.ip_address,
-            record.user_agent or "",
-            record.details or "",
+            sanitize_csv_cell(record.action),
+            sanitize_csv_cell(record.email),
+            sanitize_csv_cell(record.ip_address),
+            sanitize_csv_cell(record.user_agent),
+            sanitize_csv_cell(record.details),
             record.created_at.isoformat(),
         ])
 

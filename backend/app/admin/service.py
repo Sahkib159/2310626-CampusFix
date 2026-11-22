@@ -27,10 +27,6 @@ from app.models.user import User
 VALID_ROLES = {"STUDENT", "STAFF", "ADMIN"}
 
 
-# --------------------------------------------------
-# 1. List and search users
-# --------------------------------------------------
-
 def list_users(
     session: Session,
     search: str | None,
@@ -71,10 +67,6 @@ def list_users(
         total_pages=math.ceil(total / page_size) if total else 0,
     )
 
-
-# --------------------------------------------------
-# 2. Ban a user
-# --------------------------------------------------
 
 def ban_user(
     session: Session,
@@ -134,15 +126,11 @@ def ban_user(
         session.add(refresh_session)
 
     session.add(target)
-    session.commit()
+    session.flush()
     session.refresh(target)
 
     return AdminUserResponse.model_validate(target)
 
-
-# --------------------------------------------------
-# 3. Unban a user
-# --------------------------------------------------
 
 def unban_user(
     session: Session,
@@ -169,15 +157,11 @@ def unban_user(
     target.banned_by = None
 
     session.add(target)
-    session.commit()
+    session.flush()
     session.refresh(target)
 
     return AdminUserResponse.model_validate(target)
 
-
-# --------------------------------------------------
-# 4. Change user role
-# --------------------------------------------------
 
 def change_user_role(
     session: Session,
@@ -228,15 +212,11 @@ def change_user_role(
         session.add(refresh_session)
 
     session.add(target)
-    session.commit()
+    session.flush()
     session.refresh(target)
 
     return AdminUserResponse.model_validate(target)
 
-
-# --------------------------------------------------
-# 5. Admin dashboard statistics
-# --------------------------------------------------
 
 def get_dashboard_stats(
     session: Session,
@@ -246,10 +226,6 @@ def get_dashboard_stats(
 
     return AdminDashboardStatsResponse(**stats)
 
-
-# --------------------------------------------------
-# 6. Recent registrations
-# --------------------------------------------------
 
 def get_recent_users(
     session: Session,
