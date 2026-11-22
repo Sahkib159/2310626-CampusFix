@@ -1,7 +1,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request
 from sqlmodel import Session
 
 from database import get_session
@@ -11,6 +11,7 @@ from app.admin import service
 from app.admin.schemas import (
     AdminUserListResponse,
     AdminUserResponse,
+    AdminUserDetailResponse,
     BanUserRequest,
     ChangeUserRoleRequest,
     AdminDashboardStatsResponse,
@@ -39,6 +40,21 @@ def list_users(
         is_active,
         page,
         page_size,
+    )
+
+
+@router.get(
+    "/users/{user_id}",
+    response_model=AdminUserDetailResponse,
+)
+def get_user_detail(
+    user_id: UUID,
+    current_admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    return service.get_user_detail(
+        session,
+        user_id,
     )
 
 

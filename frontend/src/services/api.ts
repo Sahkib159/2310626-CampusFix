@@ -39,6 +39,46 @@ export interface AdminUserList {
   total_pages: number
 }
 
+export interface AdminServiceRequest {
+  id: number
+  title: string
+  description: string
+  category: string
+  status: string
+  assigned_to: string | null
+  group_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminGroupMembership {
+  id: string
+  name: string
+  description: string | null
+  is_archived: boolean
+  is_owner: boolean
+  can_create_requests: boolean
+  can_edit_requests: boolean
+  can_assign_requests: boolean
+  created_at: string
+}
+
+export interface AdminSession {
+  id: string
+  created_at: string
+  expires_at: string
+  revoked_at: string | null
+  is_active: boolean
+}
+
+export interface AdminUserDetail {
+  user: AdminUser
+  service_requests: AdminServiceRequest[]
+  groups: AdminGroupMembership[]
+  sessions: AdminSession[]
+  recent_activity: AuditLog[]
+}
+
 export interface AdminDashboardStats {
   total_users: number
   total_students: number
@@ -295,6 +335,20 @@ export async function getAdminUsers(
   )
 
   return handleResponse<AdminUserList>(response)
+}
+
+export async function getAdminUserDetail(
+  userId: string,
+  accessToken: string
+): Promise<AdminUserDetail> {
+  const response = await fetch(
+    `${API_URL}/admin/users/${encodeURIComponent(userId)}`,
+    {
+      headers: getAuthHeaders(accessToken),
+    }
+  )
+
+  return handleResponse<AdminUserDetail>(response)
 }
 
 export async function banAdminUser(

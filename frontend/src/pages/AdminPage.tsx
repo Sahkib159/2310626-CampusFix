@@ -10,11 +10,13 @@ import {
   exportAdminAuditLogs,
   getAdminAuditLogs,
   getAdminDashboardStats,
+  getAdminUserDetail,
   getAdminUsers,
   getRecentAdminUsers,
   unbanAdminUser,
   type AdminDashboardStats,
   type AdminUser,
+  type AdminUserDetail,
   type AdminUserFilters,
   type AuditLog,
   type AuditLogFilters,
@@ -85,6 +87,12 @@ export default function AdminPage() {
   const [loadingAudit, setLoadingAudit] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [workingUserId, setWorkingUserId] = useState<string | null>(null)
+
+  const [selectedUserDetail, setSelectedUserDetail] =
+    useState<AdminUserDetail | null>(null)
+
+  const [loadingUserDetail, setLoadingUserDetail] = useState(false)
+  const [userDetailError, setUserDetailError] = useState("")
 
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
@@ -177,6 +185,29 @@ export default function AdminPage() {
   function showSuccess(message: string) {
     setError("")
     setSuccess(message)
+  }
+
+  function closeUserDetails() {
+    setSelectedUserDetail(null)
+    setUserDetailError("")
+    setLoadingUserDetail(false)
+  }
+
+  async function handleViewUserDetails(target: AdminUser) {
+    if (!accessToken) return
+
+    setSelectedUserDetail(null)
+    setUserDetailError("")
+    setLoadingUserDetail(true)
+
+    try {
+      const result = await getAdminUserDetail(target.id, accessToken)
+      setSelectedUserDetail(result)
+    } catch (err) {
+      setUserDetailError(getErrorMessage(err))
+    } finally {
+      setLoadingUserDetail(false)
+    }
   }
 
   function applyUserFilters(event: FormEvent<HTMLFormElement>) {
@@ -778,6 +809,7 @@ export default function AdminPage() {
                       <th>Role</th>
                       <th>Status</th>
                       <th>Registered</th>
+                      <th>Details</th>
                       <th>Change role</th>
                       <th>Account action</th>
                     </tr>
@@ -824,6 +856,17 @@ export default function AdminPage() {
                           </td>
 
                           <td>{formatDate(target.created_at)}</td>
+
+                          <td>
+                            <button
+                              className="admin-secondary-button admin-details-button"
+                              type="button"
+                              disabled={loadingUserDetail}
+                              onClick={() => void handleViewUserDetails(target)}
+                            >
+                              View details
+                            </button>
+                          </td>
 
                           <td>
                             {isSelf ? (
@@ -1056,6 +1099,272 @@ export default function AdminPage() {
             </div>
           </section>
         </section>
+      )}
+
+      {(loadingUserDetail || selectedUserDetail || userDetailError) && (
+        <div className="admin-detail-overlay">
+          <section
+            className="admin-detail-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-detail-title"
+          >
+            <div className="admin-detail-heading">
+              <div>
+                <span className="admin-eyebrow">CAMPUSFIX ACCOUNT</span>
+                <h2 id="admin-detail-title">User details</h2>
+                <p>Account information and activity.</p>
+              </div>
+
+              <button
+                type="button"
+                className="admin-secondary-button"
+                onClick={closeUserDetails}
+              >
+                Close
+              </button>
+            </div>
+
+            {loadingUserDetail ? (
+              <div className="admin-loading">
+                Loading user details...
+              </div>
+            ) : userDetailError ? (
+              <div className="admin-message admin-error" role="alert">
+                {userDetailError}
+              </div>
+            ) : selectedUserDetail ? (
+              <>
+                <section className="admin-detail-section">
+                  <h3>Profile information</h3>
+
+                  <div className="admin-detail-profile">
+                    <div className="admin-user-avatar admin-detail-avatar">
+                      {selectedUserDetail.user.name.charAt(0).toUpperCase()}
+                    </div>
+
+                    <div>
+                      <strong>{selectedUserDetail.user.name}</strong>
+                      <span>{selectedUserDetail.user.email}</span>
+                    </div>
+                  </div>
+
+                  <div className="admin-detail-grid">
+                    <div>
+                      <span>Role</span>
+                      <strong>{selectedUserDetail.user.role}</strong>
+                    </div>
+
+                    <div>
+                      <span>Account status</span>
+                      <strong>{getUserStatus(selectedUserDetail.user)}</strong>
+                    </div>
+
+                    <div>
+                      <span>Registration date</span>
+                      <strong>
+                        {formatDate(selectedUserDetail.user.created_at)}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Ban date</span>
+                      <strong>
+                        {formatDate(selectedUserDetail.user.banned_at)}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {selectedUserDetail.user.is_banned && (
+                    <div className="admin-detail-note">
+                      <strong>Ban reason</strong>
+                      <p>
+                        {selectedUserDetail.user.ban_reason ||
+                          "No reason provided"}
+                      </p>
+                    </div>
+                  )}
+                </section>
+
+                <section className="admin-detail-section">
+                  <h3>
+                    Service requests (
+                    {selectedUserDetail.service_requests.length})
+                  </h3>
+
+                  {selectedUserDetail.service_requests.length === 0 ? (
+                    <div className="admin-empty">
+                      No service requests found.
+                    </div>
+                  ) : (
+                    <div className="admin-detail-list">
+                      {selectedUserDetail.service_requests.map((request) => (
+                        <article
+                          key={request.id}
+                          className="admin-detail-item"
+                        >
+                          <strong>{request.title}</strong>
+                          <p>{request.description}</p>
+
+                          <div className="admin-detail-meta">
+                            <span>Category: {request.category}</span>
+                            <span>Status: {request.status}</span>
+                            <span>
+                              Created: {formatDate(request.created_at)}
+                            </span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="admin-detail-section">
+                  <h3>
+                    Groups ({selectedUserDetail.groups.length})
+                  </h3>
+
+                  {selectedUserDetail.groups.length === 0 ? (
+                    <div className="admin-empty">
+                      This user does not belong to any groups.
+                    </div>
+                  ) : (
+                    <div className="admin-detail-list">
+                      {selectedUserDetail.groups.map((group) => (
+                        <article
+                          key={group.id}
+                          className="admin-detail-item"
+                        >
+                          <div className="admin-detail-item-heading">
+                            <strong>{group.name}</strong>
+                            <span className="admin-role-badge">
+                              {group.is_owner ? "Owner" : "Member"}
+                            </span>
+                          </div>
+
+                          <p>{group.description || "No description"}</p>
+
+                          <div className="admin-permission-list">
+                            <span>
+                              Create requests:{" "}
+                              {group.can_create_requests ? "Allowed" : "Denied"}
+                            </span>
+
+                            <span>
+                              Edit requests:{" "}
+                              {group.can_edit_requests ? "Allowed" : "Denied"}
+                            </span>
+
+                            <span>
+                              Assign requests:{" "}
+                              {group.can_assign_requests ? "Allowed" : "Denied"}
+                            </span>
+                          </div>
+
+                          {group.is_archived && (
+                            <span className="admin-status-badge inactive">
+                              Archived
+                            </span>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="admin-detail-section">
+                  <h3>
+                    Login sessions ({selectedUserDetail.sessions.length})
+                  </h3>
+
+                  {selectedUserDetail.sessions.length === 0 ? (
+                    <div className="admin-empty">
+                      No sessions found.
+                    </div>
+                  ) : (
+                    <div className="admin-detail-list">
+                      {selectedUserDetail.sessions.map((session) => (
+                        <article
+                          key={session.id}
+                          className="admin-detail-item"
+                        >
+                          <div className="admin-detail-item-heading">
+                            <strong>Session</strong>
+
+                            <span
+                              className={`admin-status-badge ${
+                                session.is_active ? "active" : "inactive"
+                              }`}
+                            >
+                              {session.is_active ? "Active" : "Inactive"}
+                            </span>
+                          </div>
+
+                          <div className="admin-detail-meta">
+                            <span>
+                              Created: {formatDate(session.created_at)}
+                            </span>
+
+                            <span>
+                              Expires: {formatDate(session.expires_at)}
+                            </span>
+
+                            <span>
+                              Revoked:{" "}
+                              {session.revoked_at
+                                ? formatDate(session.revoked_at)
+                                : "No"}
+                            </span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="admin-detail-section">
+                  <h3>
+                    Recent activity (
+                    {selectedUserDetail.recent_activity.length})
+                  </h3>
+
+                  {selectedUserDetail.recent_activity.length === 0 ? (
+                    <div className="admin-empty">
+                      No recent activity found.
+                    </div>
+                  ) : (
+                    <div className="admin-detail-list">
+                      {selectedUserDetail.recent_activity.map((activity) => (
+                        <article
+                          key={activity.id}
+                          className="admin-detail-item"
+                        >
+                          <div className="admin-detail-item-heading">
+                            <strong>{activity.action}</strong>
+                            <span>
+                              {formatDate(activity.created_at)}
+                            </span>
+                          </div>
+
+                          <div className="admin-detail-meta">
+                            <span>Email: {activity.email || "—"}</span>
+                            <span>
+                              IP address: {activity.ip_address || "—"}
+                            </span>
+                          </div>
+
+                          {activity.details && (
+                            <p>{activity.details}</p>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </>
+            ) : null}
+          </section>
+        </div>
       )}
     </div>
   )

@@ -1,10 +1,14 @@
 
 from uuid import UUID
 
+from sqlalchemy import or_
 from sqlmodel import Session, select, col, func
 
 from app.models.user import User
 from app.models.refresh_session import RefreshSession
+from app.models.service_request import ServiceRequest
+from app.models.group import Group, GroupMember
+from app.models.audit_log import AuditLog
 
 
 def get_admin_users(
@@ -68,7 +72,73 @@ def get_active_refresh_sessions(
     return list(session.exec(statement).all())
 
 
-# Admin dashboard statistics
+def get_user_refresh_sessions(
+    session: Session,
+    user_id: UUID,
+) -> list[RefreshSession]:
+    statement = (
+        select(RefreshSession)
+        .where(RefreshSession.user_id == user_id)
+        .order_by(RefreshSession.created_at.desc())
+    )
+
+    return list(session.exec(statement).all())
+
+
+def get_user_service_requests(
+    session: Session,
+    user_id: UUID,
+) -> list[ServiceRequest]:
+    statement = (
+        select(ServiceRequest)
+        .where(ServiceRequest.user_id == user_id)
+        .order_by(ServiceRequest.created_at.desc())
+    )
+
+    return list(session.exec(statement).all())
+
+
+def get_user_groups(
+    session: Session,
+    user_id: UUID,
+) -> list[tuple[Group, GroupMember | None]]:
+    statement = (
+        select(Group, GroupMember)
+        .outerjoin(
+            GroupMember,
+            (GroupMember.group_id == Group.id)
+            & (GroupMember.user_id == user_id),
+        )
+        .where(
+            (Group.owner_id == user_id)
+            | (GroupMember.user_id == user_id)
+        )
+        .order_by(Group.created_at.desc())
+    )
+
+    return list(session.exec(statement).all())
+
+
+def get_user_recent_activity(
+    session: Session,
+    user_id: UUID,
+    limit: int = 10,
+) -> list[AuditLog]:
+    statement = (
+        select(AuditLog)
+        .where(
+            or_(
+                AuditLog.actor_id == user_id,
+                AuditLog.target_user_id == user_id,
+            )
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+    )
+
+    return list(session.exec(statement).all())
+
+
 def get_admin_dashboard_stats(
     session: Session,
 ) -> dict[str, int]:
@@ -92,7 +162,6 @@ def get_admin_dashboard_stats(
     }
 
 
-# Recently registered users
 def get_recent_registrations(
     session: Session,
     limit: int = 5,
