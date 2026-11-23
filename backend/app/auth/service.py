@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import Session
 
 from app.models.user import User
@@ -37,6 +37,7 @@ def _build_token_response(user: User) -> schemas.TokenResponse:
         access_token=create_access_token(
             user.id,
             user.role,
+            user.token_version,
         ),
         user=schemas.UserResponse(
             id=str(user.id),
@@ -258,21 +259,21 @@ def change_user_password(
     current_user.password_hash = hash_password(data.new_password)
     current_user.updated_at = datetime.now(timezone.utc)
 
-    session.add(current_user)
-    session.commit()
+    try:
+        session.add(current_user)
+        repository.increment_user_token_version(
+            session,
+            current_user.id,
+        )
+        repository.revoke_user_refresh_sessions(
+            session,
+            current_user.id,
+        )
+        session.commit()
 
-    # Revoke every refresh-token family belonging to this user.
-    refresh_sessions = repository.get_user_sessions(
-        session,
-        current_user.id,
-    )
-
-    family_ids = {
-        item.family_id for item in refresh_sessions
-    }
-
-    for family_id in family_ids:
-        repository.revoke_refresh_family(session, family_id)
+    except SQLAlchemyError:
+        session.rollback()
+        raise
 
 
 def refresh_session(
@@ -363,11 +364,24 @@ def logout(
         stored_session.user_id,
     )
 
-    # Logout invalidates the complete login session.
-    repository.revoke_refresh_family(
-        session,
-        stored_session.family_id,
-    )
+    try:
+        if user is not None:
+            repository.increment_user_token_version(
+                session,
+                user.id,
+            )
+
+        # Logout invalidates the complete login session.
+        repository.revoke_refresh_family(
+            session,
+            stored_session.family_id,
+            commit=False,
+        )
+        session.commit()
+
+    except SQLAlchemyError:
+        session.rollback()
+        raise
 
     return user
 

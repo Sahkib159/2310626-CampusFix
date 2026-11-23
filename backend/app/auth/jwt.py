@@ -12,7 +12,11 @@ from app.auth.config import (
 )
 
 
-def create_access_token(user_id: UUID, role: str) -> str:
+def create_access_token(
+    user_id: UUID,
+    role: str,
+    token_version: int,
+) -> str:
     """
     Generate a signed JWT access token containing user ID and role.
     """
@@ -23,6 +27,7 @@ def create_access_token(user_id: UUID, role: str) -> str:
     payload = {
         "sub": str(user_id),
         "role": role,
+        "token_version": token_version,
         "type": "access",
         "iat": now,
         "exp": expires_at,

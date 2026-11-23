@@ -49,6 +49,9 @@ def get_current_user(
     if user is None:
         raise unauthorized
 
+    if payload.get("token_version") != user.token_version:
+        raise unauthorized
+
     # Reject administratively banned accounts on every protected request.
     if user.is_banned:
         raise HTTPException(

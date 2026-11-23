@@ -9,10 +9,10 @@ from database import get_session
 
 from app.models.user import User
 from app.auth import schemas, service
+from app.auth import config
 from app.auth.config import (
     REFRESH_COOKIE_NAME,
     REFRESH_TOKEN_EXPIRE_DAYS,
-    COOKIE_SECURE,
     COOKIE_SAMESITE,
 )
 from app.auth.dependencies import get_current_user
@@ -58,7 +58,7 @@ def set_refresh_cookie(
         key=REFRESH_COOKIE_NAME,
         value=refresh_token,
         httponly=True,
-        secure=COOKIE_SECURE,
+        secure=config.COOKIE_SECURE,
         samesite=COOKIE_SAMESITE,
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         path="/api/auth",
