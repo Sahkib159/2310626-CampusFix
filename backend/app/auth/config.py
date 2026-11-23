@@ -55,7 +55,7 @@ REFRESH_TOKEN_EXPIRE = timedelta(
 REFRESH_COOKIE_NAME = "campusfix_refresh"
 
 COOKIE_SECURE = (
-    os.getenv("COOKIE_SECURE", "false").lower() == "true"
+    os.getenv("COOKIE_SECURE", "true").lower() == "true"
 )
 
 COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")

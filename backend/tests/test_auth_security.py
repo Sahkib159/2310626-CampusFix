@@ -1,13 +1,19 @@
 
+import importlib
+import jwt
 import os
 import unittest
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from unittest.mock import patch
 
-from fastapi import FastAPI, Depends
+from http.cookies import SimpleCookie
+from fastapi import FastAPI, Depends, HTTPException, Response
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import SQLModel, Session, create_engine, select
 
 from app.models.user import User
@@ -16,7 +22,12 @@ from app.models.refresh_session import RefreshSession
 from app.models.service_request import ServiceRequest
 
 from app.auth import service
-from app.auth.schemas import LoginRequest
+from app.auth import config
+from app.auth import router as auth_router
+from app.auth.schemas import (
+    LoginRequest,
+    PasswordChangeRequest,
+)
 from app.auth.password import (
     hash_password,
     verify_password,
@@ -69,6 +80,31 @@ class AuthenticationSecurityTests(unittest.TestCase):
             email=email,
             password="WrongPassword123",
         )
+
+    @contextmanager
+    def temporary_cookie_secure(self, value):
+        original_value = os.environ.get("COOKIE_SECURE")
+        original_config_value = config.COOKIE_SECURE
+        original_load_dotenv = config.load_dotenv
+
+        try:
+            if value is None:
+                os.environ.pop("COOKIE_SECURE", None)
+            else:
+                os.environ["COOKIE_SECURE"] = value
+
+            with patch("dotenv.load_dotenv"):
+                importlib.reload(config)
+
+            yield
+        finally:
+            if original_value is None:
+                os.environ.pop("COOKIE_SECURE", None)
+            else:
+                os.environ["COOKIE_SECURE"] = original_value
+
+            config.COOKIE_SECURE = original_config_value
+            config.load_dotenv = original_load_dotenv
 
     # --------------------------------------------------
     # PASSWORD PEPPER TESTS
@@ -147,6 +183,7 @@ class AuthenticationSecurityTests(unittest.TestCase):
         token = create_access_token(
             self.user.id,
             self.user.role,
+            self.user.token_version,
         )
 
         payload = decode_access_token(token)
@@ -166,10 +203,16 @@ class AuthenticationSecurityTests(unittest.TestCase):
             "access",
         )
 
+        self.assertEqual(
+            payload["token_version"],
+            0,
+        )
+
     def test_access_token_expiry_matches_configured_limit(self):
         token = create_access_token(
             self.user.id,
             self.user.role,
+            self.user.token_version,
         )
 
         payload = decode_access_token(token)
@@ -195,6 +238,127 @@ class AuthenticationSecurityTests(unittest.TestCase):
             lifetime,
             ACCESS_TOKEN_EXPIRE,
         )
+
+    def test_access_token_requires_matching_token_version(self):
+        matching_token = create_access_token(
+            self.user.id,
+            self.user.role,
+            self.user.token_version,
+        )
+
+        current_user = get_current_user(
+            HTTPAuthorizationCredentials(
+                scheme="Bearer",
+                credentials=matching_token,
+            ),
+            self.session,
+        )
+
+        self.assertEqual(
+            current_user.id,
+            self.user.id,
+        )
+
+        self.user.token_version = 1
+        self.session.add(self.user)
+        self.session.commit()
+
+        with self.assertRaises(HTTPException) as context:
+            get_current_user(
+                HTTPAuthorizationCredentials(
+                    scheme="Bearer",
+                    credentials=matching_token,
+                ),
+                self.session,
+            )
+
+        self.assertEqual(
+            context.exception.status_code,
+            401,
+        )
+
+    def test_access_token_requires_token_version_claim(self):
+        token = create_access_token(
+            self.user.id,
+            self.user.role,
+            self.user.token_version,
+        )
+        payload = decode_access_token(token)
+        payload.pop("token_version")
+
+        token_without_version = jwt.encode(
+            payload,
+            config.JWT_SECRET_KEY,
+            algorithm=config.JWT_ALGORITHM,
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            get_current_user(
+                HTTPAuthorizationCredentials(
+                    scheme="Bearer",
+                    credentials=token_without_version,
+                ),
+                self.session,
+            )
+
+        self.assertEqual(
+            context.exception.status_code,
+            401,
+        )
+
+    def test_cookie_secure_defaults_to_true_without_environment_value(
+        self,
+    ):
+        with self.temporary_cookie_secure(None):
+            self.assertTrue(
+                config.COOKIE_SECURE
+            )
+
+    def test_cookie_secure_configuration_supports_local_false_value(
+        self,
+    ):
+        with self.temporary_cookie_secure("false"):
+            self.assertFalse(
+                config.COOKIE_SECURE
+            )
+
+    def test_refresh_cookie_uses_secure_configuration(self):
+        for value, expected_secure in (
+            ("true", True),
+            ("false", False),
+        ):
+            with self.subTest(value=value):
+                with self.temporary_cookie_secure(value):
+                    response = Response()
+                    auth_router.set_refresh_cookie(
+                        response,
+                        "test-refresh-token",
+                    )
+
+                    cookies = SimpleCookie()
+                    cookies.load(response.headers["set-cookie"])
+                    cookie = cookies["campusfix_refresh"]
+
+                    self.assertEqual(
+                        cookie["path"],
+                        "/api/auth",
+                    )
+                    self.assertEqual(
+                        cookie["samesite"],
+                        "lax",
+                    )
+                    self.assertEqual(
+                        cookie["max-age"],
+                        "604800",
+                    )
+                    self.assertEqual(
+                        cookie["httponly"],
+                        True,
+                    )
+                    self.assertEqual(
+                        bool(cookie["secure"]),
+                        expected_secure,
+                    )
 
     # --------------------------------------------------
     # EMAIL RATE LIMIT TESTS
@@ -365,6 +529,7 @@ class AuthenticationSecurityTests(unittest.TestCase):
         token = create_access_token(
             self.user.id,
             self.user.role,
+            self.user.token_version,
         )
 
         try:
@@ -468,6 +633,270 @@ class AuthenticationSecurityTests(unittest.TestCase):
                 item.revoked_at is not None
                 for item in family_sessions
             )
+        )
+
+    def test_logout_invalidates_access_token_and_only_current_family(self):
+        raw_token = "logout-refresh-token"
+        other_raw_token = "other-refresh-token"
+        family_id = uuid4()
+        other_family_id = uuid4()
+
+        refresh_record = RefreshSession(
+            user_id=self.user.id,
+            family_id=family_id,
+            token_hash=hash_refresh_token(raw_token),
+            expires_at=(
+                datetime.now(timezone.utc)
+                + timedelta(days=1)
+            ),
+        )
+        other_refresh_record = RefreshSession(
+            user_id=self.user.id,
+            family_id=other_family_id,
+            token_hash=hash_refresh_token(other_raw_token),
+            expires_at=(
+                datetime.now(timezone.utc)
+                + timedelta(days=1)
+            ),
+        )
+
+        self.session.add_all([
+            refresh_record,
+            other_refresh_record,
+        ])
+        self.session.commit()
+
+        old_access_token = create_access_token(
+            self.user.id,
+            self.user.role,
+            self.user.token_version,
+        )
+
+        service.logout(
+            self.session,
+            raw_token,
+        )
+
+        self.session.refresh(self.user)
+        self.session.refresh(refresh_record)
+        self.session.refresh(other_refresh_record)
+
+        self.assertEqual(
+            self.user.token_version,
+            1,
+        )
+        self.assertIsNotNone(
+            refresh_record.revoked_at
+        )
+        self.assertIsNone(
+            other_refresh_record.revoked_at
+        )
+
+        with self.assertRaises(HTTPException):
+            get_current_user(
+                HTTPAuthorizationCredentials(
+                    scheme="Bearer",
+                    credentials=old_access_token,
+                ),
+                self.session,
+            )
+
+        refreshed = service.refresh_session(
+            self.session,
+            other_raw_token,
+        )
+
+        self.assertTrue(
+            refreshed["response"].access_token
+        )
+
+    @patch(
+        "app.auth.service.hash_password",
+        return_value="new-password-hash",
+    )
+    @patch(
+        "app.auth.service.verify_password",
+        return_value=True,
+    )
+    def test_password_change_invalidates_access_and_all_families(
+        self,
+        mock_verify,
+        mock_hash,
+    ):
+        first_raw_token = "first-password-refresh-token"
+        second_raw_token = "second-password-refresh-token"
+        first_family_id = uuid4()
+        second_family_id = uuid4()
+
+        first_record = RefreshSession(
+            user_id=self.user.id,
+            family_id=first_family_id,
+            token_hash=hash_refresh_token(first_raw_token),
+            expires_at=(
+                datetime.now(timezone.utc)
+                + timedelta(days=1)
+            ),
+        )
+        second_record = RefreshSession(
+            user_id=self.user.id,
+            family_id=second_family_id,
+            token_hash=hash_refresh_token(second_raw_token),
+            expires_at=(
+                datetime.now(timezone.utc)
+                + timedelta(days=1)
+            ),
+        )
+
+        self.session.add_all([
+            first_record,
+            second_record,
+        ])
+        self.session.commit()
+
+        old_access_token = create_access_token(
+            self.user.id,
+            self.user.role,
+            self.user.token_version,
+        )
+
+        service.change_user_password(
+            self.session,
+            self.user,
+            PasswordChangeRequest(
+                current_password="OldPassword123",
+                new_password="NewPassword123",
+            ),
+        )
+
+        self.session.refresh(self.user)
+        self.session.refresh(first_record)
+        self.session.refresh(second_record)
+
+        self.assertEqual(
+            self.user.password_hash,
+            "new-password-hash",
+        )
+        self.assertEqual(
+            self.user.token_version,
+            1,
+        )
+        self.assertIsNotNone(
+            first_record.revoked_at
+        )
+        self.assertIsNotNone(
+            second_record.revoked_at
+        )
+
+        with self.assertRaises(HTTPException):
+            get_current_user(
+                HTTPAuthorizationCredentials(
+                    scheme="Bearer",
+                    credentials=old_access_token,
+                ),
+                self.session,
+            )
+
+        with self.assertRaises(ValueError):
+            service.refresh_session(
+                self.session,
+                first_raw_token,
+            )
+
+    @patch(
+        "app.auth.repository.revoke_refresh_family",
+        side_effect=SQLAlchemyError("revocation failed"),
+    )
+    def test_logout_rolls_back_token_version_on_revocation_failure(
+        self,
+        mock_revoke,
+    ):
+        raw_token = "failed-logout-refresh-token"
+        refresh_record = RefreshSession(
+            user_id=self.user.id,
+            family_id=uuid4(),
+            token_hash=hash_refresh_token(raw_token),
+            expires_at=(
+                datetime.now(timezone.utc)
+                + timedelta(days=1)
+            ),
+        )
+
+        self.session.add(refresh_record)
+        self.session.commit()
+
+        with self.assertRaises(SQLAlchemyError):
+            service.logout(
+                self.session,
+                raw_token,
+            )
+
+        self.session.refresh(self.user)
+        self.session.refresh(refresh_record)
+
+        self.assertEqual(
+            self.user.token_version,
+            0,
+        )
+        self.assertIsNone(
+            refresh_record.revoked_at
+        )
+
+    @patch(
+        "app.auth.repository.revoke_user_refresh_sessions",
+        side_effect=SQLAlchemyError("revocation failed"),
+    )
+    @patch(
+        "app.auth.service.hash_password",
+        return_value="new-password-hash",
+    )
+    @patch(
+        "app.auth.service.verify_password",
+        return_value=True,
+    )
+    def test_password_change_rolls_back_on_revocation_failure(
+        self,
+        mock_verify,
+        mock_hash,
+        mock_revoke,
+    ):
+        raw_token = "failed-password-refresh-token"
+        refresh_record = RefreshSession(
+            user_id=self.user.id,
+            family_id=uuid4(),
+            token_hash=hash_refresh_token(raw_token),
+            expires_at=(
+                datetime.now(timezone.utc)
+                + timedelta(days=1)
+            ),
+        )
+
+        self.session.add(refresh_record)
+        self.session.commit()
+        original_password_hash = self.user.password_hash
+
+        with self.assertRaises(SQLAlchemyError):
+            service.change_user_password(
+                self.session,
+                self.user,
+                PasswordChangeRequest(
+                    current_password="OldPassword123",
+                    new_password="NewPassword123",
+                ),
+            )
+
+        self.session.refresh(self.user)
+        self.session.refresh(refresh_record)
+
+        self.assertEqual(
+            self.user.password_hash,
+            original_password_hash,
+        )
+        self.assertEqual(
+            self.user.token_version,
+            0,
+        )
+        self.assertIsNone(
+            refresh_record.revoked_at
         )
 
 

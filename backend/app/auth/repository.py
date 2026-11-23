@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
+from sqlalchemy import update
 from sqlmodel import Session, select
 
 from app.models.user import User
@@ -38,6 +39,19 @@ def get_user_by_id(
     user_id: UUID,
 ) -> User | None:
     return session.get(User, user_id)
+
+
+def increment_user_token_version(
+    session: Session,
+    user_id: UUID,
+) -> None:
+    statement = (
+        update(User)
+        .where(User.id == user_id)
+        .values(token_version=User.token_version + 1)
+    )
+
+    session.exec(statement)
 
 
 def create_user(
@@ -86,6 +100,20 @@ def revoke_refresh_session(
 def revoke_refresh_family(
     session: Session,
     family_id: UUID,
+    commit: bool = True,
+) -> None:
+    _revoke_refresh_family(
+        session,
+        family_id,
+    )
+
+    if commit:
+        session.commit()
+
+
+def _revoke_refresh_family(
+    session: Session,
+    family_id: UUID,
 ) -> None:
     statement = select(RefreshSession).where(
         RefreshSession.family_id == family_id,
@@ -99,7 +127,21 @@ def revoke_refresh_family(
         refresh_session.revoked_at = now
         session.add(refresh_session)
 
-    session.commit()
+
+def revoke_user_refresh_sessions(
+    session: Session,
+    user_id: UUID,
+) -> None:
+    statement = (
+        update(RefreshSession)
+        .where(
+            RefreshSession.user_id == user_id,
+            RefreshSession.revoked_at.is_(None),
+        )
+        .values(revoked_at=datetime.now(timezone.utc))
+    )
+
+    session.exec(statement)
 
 
 def get_user_sessions(

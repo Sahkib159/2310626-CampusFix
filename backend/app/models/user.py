@@ -13,6 +13,7 @@ class User(SQLModel, table=True):
     name: str = Field(max_length=150)
     password_hash: str = Field(max_length=255)
     role: str = Field(default="STUDENT", max_length=20)
+    token_version: int = Field(default=0)
 
     # Account status
     is_active: bool = Field(default=True)
