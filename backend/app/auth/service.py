@@ -159,6 +159,7 @@ def login(
     account_active = (
         user is not None
         and user.is_active
+        and not user.is_banned
     )
 
     if not credentials_valid or not account_active:
@@ -317,7 +318,7 @@ def refresh_session(
     if user is None:
         raise ValueError("User account not found.")
 
-    if not user.is_active:
+    if not user.is_active or user.is_banned:
         repository.revoke_refresh_family(
             session,
             stored_session.family_id,

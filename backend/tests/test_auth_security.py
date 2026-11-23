@@ -306,6 +306,38 @@ class AuthenticationSecurityTests(unittest.TestCase):
         self.assertEqual(len(attempts), 1)
         self.assertFalse(attempts[0].successful)
 
+    @patch(
+        "app.auth.service.verify_password",
+        return_value=True,
+    )
+    def test_banned_user_cannot_login(self, mock_verify):
+        self.user.is_banned = True
+        self.session.add(self.user)
+        self.session.commit()
+
+        with self.assertRaises(ValueError) as context:
+            service.login(
+                self.session,
+                self.login_data(),
+                "192.0.2.41",
+            )
+
+        self.assertEqual(
+            str(context.exception),
+            "Incorrect email or password.",
+        )
+
+        statement = select(LoginAttempt)
+        attempts = self.session.exec(statement).all()
+
+        self.assertEqual(len(attempts), 1)
+        self.assertFalse(attempts[0].successful)
+
+        refresh_sessions = self.session.exec(
+            select(RefreshSession)
+        ).all()
+        self.assertEqual(len(refresh_sessions), 0)
+
     # --------------------------------------------------
     # BANNED ACCOUNT ACCESS TEST
     # --------------------------------------------------
@@ -383,6 +415,59 @@ class AuthenticationSecurityTests(unittest.TestCase):
 
         self.assertIsNotNone(
             refresh_record.revoked_at
+        )
+
+    def test_banned_user_refresh_token_is_revoked(self):
+        raw_token = "test-banned-refresh-token"
+        sibling_token = "test-banned-sibling-token"
+        family_id = uuid4()
+
+        refresh_record = RefreshSession(
+            user_id=self.user.id,
+            family_id=family_id,
+            token_hash=hash_refresh_token(raw_token),
+            expires_at=(
+                datetime.now(timezone.utc)
+                + timedelta(days=1)
+            ),
+        )
+        sibling_record = RefreshSession(
+            user_id=self.user.id,
+            family_id=family_id,
+            token_hash=hash_refresh_token(sibling_token),
+            expires_at=(
+                datetime.now(timezone.utc)
+                + timedelta(days=1)
+            ),
+        )
+
+        self.session.add_all([
+            refresh_record,
+            sibling_record,
+        ])
+
+        self.user.is_banned = True
+        self.session.add(self.user)
+        self.session.commit()
+
+        with self.assertRaises(ValueError):
+            service.refresh_session(
+                self.session,
+                raw_token,
+            )
+
+        family_sessions = self.session.exec(
+            select(RefreshSession).where(
+                RefreshSession.family_id == family_id
+            )
+        ).all()
+
+        self.assertEqual(len(family_sessions), 2)
+        self.assertTrue(
+            all(
+                item.revoked_at is not None
+                for item in family_sessions
+            )
         )
 
 
