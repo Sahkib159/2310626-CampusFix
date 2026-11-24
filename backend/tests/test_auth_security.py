@@ -635,6 +635,91 @@ class AuthenticationSecurityTests(unittest.TestCase):
             )
         )
 
+    def test_self_service_session_revocation_is_scoped_to_user(self):
+        other_user = User(
+            id=uuid4(),
+            email="other-student@test.com",
+            name="Other Student",
+            password_hash="test-hash",
+            role="STUDENT",
+            is_active=True,
+        )
+        family_id = uuid4()
+        expires_at = datetime.now(timezone.utc) + timedelta(days=1)
+        target_sessions = [
+            RefreshSession(
+                user_id=self.user.id,
+                family_id=family_id,
+                token_hash=hash_refresh_token("target-session-token"),
+                expires_at=expires_at,
+            ),
+            RefreshSession(
+                user_id=self.user.id,
+                family_id=family_id,
+                token_hash=hash_refresh_token(
+                    "target-session-rotated-token"
+                ),
+                expires_at=expires_at,
+            ),
+        ]
+        other_user_session = RefreshSession(
+            user_id=other_user.id,
+            family_id=family_id,
+            token_hash=hash_refresh_token("other-user-session-token"),
+            expires_at=expires_at,
+        )
+
+        self.session.add_all([
+            other_user,
+            *target_sessions,
+            other_user_session,
+        ])
+        self.session.commit()
+
+        app = FastAPI()
+        app.include_router(auth_router.router)
+
+        def override_get_session():
+            yield self.session
+
+        app.dependency_overrides[get_session] = override_get_session
+        token = create_access_token(
+            self.user.id,
+            self.user.role,
+            self.user.token_version,
+        )
+
+        try:
+            with TestClient(app) as client:
+                response = client.delete(
+                    f"/api/auth/sessions/{family_id}",
+                    headers={
+                        "Authorization": f"Bearer {token}"
+                    },
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"message": "Session revoked successfully."},
+        )
+
+        for refresh_session in [
+            *target_sessions,
+            other_user_session,
+        ]:
+            self.session.refresh(refresh_session)
+
+        self.assertTrue(
+            all(
+                item.revoked_at is not None
+                for item in target_sessions
+            )
+        )
+        self.assertIsNone(other_user_session.revoked_at)
+
     def test_logout_invalidates_access_token_and_only_current_family(self):
         raw_token = "logout-refresh-token"
         other_raw_token = "other-refresh-token"

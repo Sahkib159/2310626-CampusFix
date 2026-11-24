@@ -8,6 +8,10 @@ from uuid import UUID
 from fastapi import HTTPException, Request, status
 from sqlmodel import Session
 
+from app.auth.repository import (
+    revoke_user_session_family as revoke_refresh_session_family,
+    user_session_family_exists,
+)
 from app.admin.repository import (
     get_admin_users,
     get_admin_user_by_id,
@@ -34,6 +38,7 @@ from app.admin.schemas import (
 )
 
 from app.models.user import User
+from app.models.refresh_session import RefreshSession
 from app.audit.service import record_event
 
 
@@ -147,29 +152,58 @@ def get_user_detail(
 
     now = datetime.now(timezone.utc)
 
-    sessions = []
+    families: dict[UUID, list[RefreshSession]] = {}
 
     for refresh_session in refresh_sessions:
-        expires_at = refresh_session.expires_at
+        families.setdefault(
+            refresh_session.family_id,
+            [],
+        ).append(refresh_session)
 
-        comparison_now = (
-            now.replace(tzinfo=None)
-            if expires_at.tzinfo is None
-            else now
+    sessions = []
+
+    for family_id, family_tokens in families.items():
+        created_at = min(
+            item.created_at for item in family_tokens
+        )
+        expires_at = max(
+            item.expires_at for item in family_tokens
+        )
+        revoked_dates = [
+            item.revoked_at
+            for item in family_tokens
+            if item.revoked_at is not None
+        ]
+        revoked_at = (
+            max(revoked_dates)
+            if len(revoked_dates) == len(family_tokens)
+            else None
+        )
+        is_active = any(
+            item.revoked_at is None
+            and item.expires_at
+            > (
+                now.replace(tzinfo=None)
+                if item.expires_at.tzinfo is None
+                else now
+            )
+            for item in family_tokens
         )
 
         sessions.append(
             AdminSessionResponse(
-                id=refresh_session.id,
-                created_at=refresh_session.created_at,
+                id=family_id,
+                created_at=created_at,
                 expires_at=expires_at,
-                revoked_at=refresh_session.revoked_at,
-                is_active=(
-                    refresh_session.revoked_at is None
-                    and expires_at > comparison_now
-                ),
+                revoked_at=revoked_at,
+                is_active=is_active,
             )
         )
+
+    sessions.sort(
+        key=lambda item: item.created_at,
+        reverse=True,
+    )
 
     activity = get_user_recent_activity(
         session,
@@ -187,6 +221,39 @@ def get_user_detail(
         sessions=sessions,
         recent_activity=activity,
     )
+
+
+def revoke_user_session_family(
+    session: Session,
+    user_id: UUID,
+    family_id: UUID,
+) -> tuple[User, bool]:
+    target = get_admin_user_by_id(session, user_id)
+
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+
+    if not user_session_family_exists(
+        session,
+        user_id,
+        family_id,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session family not found.",
+        )
+
+    revoked = revoke_refresh_session_family(
+        session,
+        user_id,
+        family_id,
+        commit=False,
+    )
+
+    return target, revoked
 
 
 def ban_user(

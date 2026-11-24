@@ -73,6 +73,10 @@ export interface AdminSession {
   is_active: boolean
 }
 
+export interface AdminSessionRevocationResponse {
+  message: string
+}
+
 export interface AdminUserDetail {
   user: AdminUser
   service_requests: AdminServiceRequest[]
@@ -411,6 +415,23 @@ export async function getAdminUserDetail(
   )
 
   return handleResponse<AdminUserDetail>(response)
+}
+
+export async function revokeAdminUserSession(
+  userId: string,
+  familyId: string,
+  accessToken: string
+): Promise<AdminSessionRevocationResponse> {
+  const response = await authenticatedFetch(
+    `${API_URL}/admin/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(familyId)}`,
+    {
+      method: "DELETE",
+      headers: getAuthHeaders(accessToken),
+    },
+    accessToken
+  )
+
+  return handleResponse<AdminSessionRevocationResponse>(response)
 }
 
 export async function banAdminUser(

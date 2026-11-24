@@ -107,6 +107,36 @@ def get_user_detail(
     )
 
 
+@router.delete("/users/{user_id}/sessions/{family_id}")
+def revoke_user_session_family(
+    user_id: UUID,
+    family_id: UUID,
+    request: Request,
+    current_admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    target, revoked = service.revoke_user_session_family(
+        session,
+        user_id,
+        family_id,
+    )
+
+    record_event(
+        session,
+        "USER_SESSION_REVOKED",
+        request,
+        actor_id=current_admin.id,
+        target_user_id=target.id,
+        email=target.email,
+        details={
+            "family_id": str(family_id),
+            "changed": revoked,
+        },
+    )
+
+    return {"message": "Session family revoked successfully."}
+
+
 @router.post(
     "/users/{user_id}/ban",
     response_model=AdminUserResponse,
