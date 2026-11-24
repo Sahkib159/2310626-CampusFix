@@ -15,8 +15,10 @@ import {
   getAdminUserDetail,
   getAdminUsers,
   getRecentAdminUsers,
+  revokeAdminUserSession,
   unbanAdminUser,
   type AdminDashboardStats,
+  type AdminSession,
   type AdminUser,
   type AdminUserDetail,
   type AdminUserFilters,
@@ -97,6 +99,9 @@ export default function AdminPage() {
 
   const [loadingUserDetail, setLoadingUserDetail] = useState(false)
   const [userDetailError, setUserDetailError] = useState("")
+  const [workingSessionId, setWorkingSessionId] = useState<string | null>(null)
+  const [sessionActionError, setSessionActionError] = useState("")
+  const [sessionActionSuccess, setSessionActionSuccess] = useState("")
 
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
@@ -196,16 +201,22 @@ export default function AdminPage() {
   }
 
   function closeUserDetails() {
+    if (workingSessionId !== null) return
+
     setSelectedUserDetail(null)
     setUserDetailError("")
     setLoadingUserDetail(false)
+    setSessionActionError("")
+    setSessionActionSuccess("")
   }
 
   async function handleViewUserDetails(target: AdminUser) {
-    if (!accessToken) return
+    if (!accessToken || workingSessionId !== null) return
 
     setSelectedUserDetail(null)
     setUserDetailError("")
+    setSessionActionError("")
+    setSessionActionSuccess("")
     setLoadingUserDetail(true)
 
     try {
@@ -215,6 +226,76 @@ export default function AdminPage() {
       setUserDetailError(getErrorMessage(err))
     } finally {
       setLoadingUserDetail(false)
+    }
+  }
+
+  async function handleRevokeSession(session: AdminSession) {
+    const target = selectedUserDetail
+
+    if (
+      !accessToken ||
+      !target ||
+      !session.is_active ||
+      workingSessionId !== null
+    ) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Revoke login session ${session.id} for ${target.user.name} (${target.user.email}), created ${formatDate(session.created_at)}?`
+    )
+
+    if (!confirmed) return
+
+    setSessionActionError("")
+    setSessionActionSuccess("")
+    setWorkingSessionId(session.id)
+
+    try {
+      const result = await revokeAdminUserSession(
+        target.user.id,
+        session.id,
+        accessToken
+      )
+      const revokedAt = new Date().toISOString()
+      setSelectedUserDetail((current) =>
+        current?.user.id === target.user.id
+          ? {
+              ...current,
+              sessions: current.sessions.map((currentSession) =>
+                currentSession.id === session.id
+                  ? {
+                      ...currentSession,
+                      is_active: false,
+                      revoked_at: currentSession.revoked_at ?? revokedAt,
+                    }
+                  : currentSession
+              ),
+            }
+          : current
+      )
+      setSessionActionSuccess(result.message)
+
+      try {
+        const refreshedDetails = await getAdminUserDetail(
+          target.user.id,
+          accessToken
+        )
+        setSelectedUserDetail((current) =>
+          current?.user.id === target.user.id
+            ? refreshedDetails
+            : current
+        )
+      } catch (err) {
+        setSessionActionError(
+          `The session was revoked, but user details could not be refreshed: ${getErrorMessage(err)}`
+        )
+      }
+
+    } catch (err) {
+      setSessionActionError(getErrorMessage(err))
+    } finally {
+      setWorkingSessionId(null)
     }
   }
 
@@ -1152,7 +1233,10 @@ export default function AdminPage() {
                             <button
                               className="admin-secondary-button admin-details-button"
                               type="button"
-                              disabled={loadingUserDetail}
+                              disabled={
+                                loadingUserDetail ||
+                                workingSessionId !== null
+                              }
                               onClick={() => void handleViewUserDetails(target)}
                             >
                               View details
@@ -1410,6 +1494,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 className="admin-secondary-button"
+                disabled={workingSessionId !== null}
                 onClick={closeUserDetails}
               >
                 Close
@@ -1568,6 +1653,18 @@ export default function AdminPage() {
                     Login sessions ({selectedUserDetail.sessions.length})
                   </h3>
 
+                  {sessionActionError && (
+                    <div className="admin-message admin-error" role="alert">
+                      {sessionActionError}
+                    </div>
+                  )}
+
+                  {sessionActionSuccess && (
+                    <div className="admin-message admin-success" role="status">
+                      {sessionActionSuccess}
+                    </div>
+                  )}
+
                   {selectedUserDetail.sessions.length === 0 ? (
                     <div className="admin-empty">
                       No sessions found.
@@ -1607,6 +1704,25 @@ export default function AdminPage() {
                                 : "No"}
                             </span>
                           </div>
+
+                          {session.is_active && (
+                            <button
+                              type="button"
+                              className="admin-action-button ban"
+                              disabled={workingSessionId !== null}
+                              onClick={() => void handleRevokeSession(session)}
+                              aria-busy={workingSessionId === session.id}
+                              aria-label={
+                                workingSessionId === session.id
+                                  ? `Revoking session ${session.id}`
+                                  : `Revoke session ${session.id}`
+                              }
+                            >
+                              {workingSessionId === session.id
+                                ? "Revoking..."
+                                : "Revoke"}
+                            </button>
+                          )}
                         </article>
                       ))}
                     </div>

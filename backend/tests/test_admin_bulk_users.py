@@ -1,9 +1,12 @@
+import json
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, Session, create_engine, select
 
@@ -70,6 +73,7 @@ class AdminBulkUserTests(unittest.TestCase):
         self.other_admin_id = uuid4()
         self.student_a_id = uuid4()
         self.student_b_id = uuid4()
+        self.staff_id = uuid4()
         self.banned_id = uuid4()
 
         users = [
@@ -100,6 +104,13 @@ class AdminBulkUserTests(unittest.TestCase):
                 name="Student B",
                 password_hash="test-hash",
                 role="STUDENT",
+            ),
+            User(
+                id=self.staff_id,
+                email="staff@test.com",
+                name="Staff",
+                password_hash="test-hash",
+                role="STAFF",
             ),
             User(
                 id=self.banned_id,
@@ -639,6 +650,418 @@ class AdminBulkUserTests(unittest.TestCase):
         logs = self.get_audit_logs("USER_BANNED")
         self.assertEqual(len(logs), 1)
         self.assertEqual(logs[0].target_user_id, self.student_a_id)
+
+    def test_admin_can_revoke_one_session_family(self):
+        now = datetime.now(timezone.utc)
+        family_id = uuid4()
+        other_family_id = uuid4()
+        another_users_family_id = uuid4()
+        historical_revocation = now - timedelta(days=1)
+
+        refresh_sessions = [
+            RefreshSession(
+                user_id=self.student_a_id,
+                family_id=family_id,
+                token_hash="target-family-historical-token",
+                expires_at=now + timedelta(days=1),
+                revoked_at=historical_revocation,
+            ),
+            RefreshSession(
+                user_id=self.student_a_id,
+                family_id=family_id,
+                token_hash="target-family-current-token",
+                expires_at=now + timedelta(days=10),
+            ),
+            RefreshSession(
+                user_id=self.student_a_id,
+                family_id=other_family_id,
+                token_hash="target-other-family-token",
+                expires_at=now + timedelta(days=10),
+            ),
+            RefreshSession(
+                user_id=self.student_b_id,
+                family_id=another_users_family_id,
+                token_hash="other-user-family-token",
+                expires_at=now + timedelta(days=10),
+            ),
+        ]
+
+        with Session(self.engine) as session:
+            session.add_all(refresh_sessions)
+            session.commit()
+
+        token_version_before = self.get_user(
+            self.student_a_id,
+        ).token_version
+
+        response = self.client.delete(
+            f"/api/admin/users/{self.student_a_id}/sessions/{family_id}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["message"],
+            "Session family revoked successfully.",
+        )
+
+        with Session(self.engine) as session:
+            stored_sessions = {
+                item.token_hash: item
+                for item in session.exec(
+                    select(RefreshSession)
+                ).all()
+            }
+
+        self.assertEqual(
+            stored_sessions[
+                "target-family-historical-token"
+            ].revoked_at,
+            historical_revocation,
+        )
+        self.assertIsNotNone(
+            stored_sessions[
+                "target-family-current-token"
+            ].revoked_at
+        )
+        self.assertIsNone(
+            stored_sessions[
+                "target-other-family-token"
+            ].revoked_at
+        )
+        self.assertIsNone(
+            stored_sessions[
+                "other-user-family-token"
+            ].revoked_at
+        )
+        self.assertEqual(
+            self.get_user(self.student_a_id).token_version,
+            token_version_before,
+        )
+
+        logs = self.get_audit_logs("USER_SESSION_REVOKED")
+        self.assertEqual(len(logs), 1)
+        self.assertEqual(logs[0].actor_id, self.admin_id)
+        self.assertEqual(logs[0].target_user_id, self.student_a_id)
+        self.assertEqual(
+            json.loads(logs[0].details),
+            {"family_id": str(family_id), "changed": True},
+        )
+
+    def test_session_family_revocation_requires_admin(self):
+        family_id = uuid4()
+
+        for user_id, expected_status in (
+            (None, 401),
+            (self.student_a_id, 403),
+            (self.staff_id, 403),
+        ):
+            with self.subTest(user_id=user_id):
+                type(self).current_admin_id = user_id
+
+                response = self.client.delete(
+                    f"/api/admin/users/{self.student_b_id}"
+                    f"/sessions/{family_id}",
+                )
+
+                self.assertEqual(
+                    response.status_code,
+                    expected_status,
+                )
+
+    def test_session_family_id_collision_is_scoped_to_target_user(self):
+        family_id = uuid4()
+        now = datetime.now(timezone.utc)
+        target_session = RefreshSession(
+            user_id=self.student_a_id,
+            family_id=family_id,
+            token_hash="collision-target-user-token",
+            expires_at=now + timedelta(days=1),
+        )
+        other_user_session = RefreshSession(
+            user_id=self.student_b_id,
+            family_id=family_id,
+            token_hash="collision-other-user-token",
+            expires_at=now + timedelta(days=1),
+        )
+
+        with Session(self.engine) as session:
+            session.add_all([target_session, other_user_session])
+            session.commit()
+
+        response = self.client.delete(
+            f"/api/admin/users/{self.student_a_id}/sessions/{family_id}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with Session(self.engine) as session:
+            stored_sessions = {
+                item.token_hash: item
+                for item in session.exec(
+                    select(RefreshSession)
+                ).all()
+            }
+
+        self.assertIsNotNone(
+            stored_sessions["collision-target-user-token"].revoked_at
+        )
+        self.assertIsNone(
+            stored_sessions["collision-other-user-token"].revoked_at
+        )
+
+    def test_session_family_belonging_to_another_user_is_not_found(self):
+        family_id = uuid4()
+        refresh_session = RefreshSession(
+            user_id=self.student_b_id,
+            family_id=family_id,
+            token_hash="foreign-session-family-token",
+            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        )
+
+        with Session(self.engine) as session:
+            session.add(refresh_session)
+            session.commit()
+
+        response = self.client.delete(
+            f"/api/admin/users/{self.student_a_id}/sessions/{family_id}",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        with Session(self.engine) as session:
+            stored = session.exec(
+                select(RefreshSession).where(
+                    RefreshSession.token_hash
+                    == "foreign-session-family-token"
+                )
+            ).one()
+        self.assertIsNone(stored.revoked_at)
+        self.assertEqual(
+            self.get_audit_logs("USER_SESSION_REVOKED"),
+            [],
+        )
+
+    def test_session_family_revocation_handles_missing_records(self):
+        missing_user_id = uuid4()
+        missing_family_id = uuid4()
+
+        for user_id, family_id in (
+            (missing_user_id, missing_family_id),
+            (self.student_a_id, missing_family_id),
+        ):
+            with self.subTest(user_id=user_id, family_id=family_id):
+                response = self.client.delete(
+                    f"/api/admin/users/{user_id}/sessions/{family_id}",
+                )
+                self.assertEqual(response.status_code, 404)
+
+        self.assertEqual(
+            self.get_audit_logs("USER_SESSION_REVOKED"),
+            [],
+        )
+
+    def test_already_revoked_session_family_is_idempotent(self):
+        family_id = uuid4()
+        previous_revocation = datetime.now(timezone.utc) - timedelta(days=1)
+        refresh_session = RefreshSession(
+            user_id=self.student_a_id,
+            family_id=family_id,
+            token_hash="already-revoked-session-family-token",
+            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            revoked_at=previous_revocation,
+        )
+
+        with Session(self.engine) as session:
+            session.add(refresh_session)
+            session.commit()
+
+        response = self.client.delete(
+            f"/api/admin/users/{self.student_a_id}/sessions/{family_id}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["message"],
+            "Session family revoked successfully.",
+        )
+        with Session(self.engine) as session:
+            stored = session.exec(
+                select(RefreshSession).where(
+                    RefreshSession.token_hash
+                    == "already-revoked-session-family-token"
+                )
+            ).one()
+        self.assertEqual(
+            stored.revoked_at,
+            previous_revocation,
+        )
+
+        logs = self.get_audit_logs("USER_SESSION_REVOKED")
+        self.assertEqual(len(logs), 1)
+        self.assertEqual(
+            json.loads(logs[0].details),
+            {"family_id": str(family_id), "changed": False},
+        )
+
+    def test_session_revocation_rolls_back_when_audit_write_fails(self):
+        family_id = uuid4()
+        now = datetime.now(timezone.utc)
+        refresh_sessions = [
+            RefreshSession(
+                user_id=self.student_a_id,
+                family_id=family_id,
+                token_hash="audit-failure-target-token",
+                expires_at=now + timedelta(days=1),
+            ),
+            RefreshSession(
+                user_id=self.student_a_id,
+                family_id=uuid4(),
+                token_hash="audit-failure-other-family-token",
+                expires_at=now + timedelta(days=1),
+            ),
+            RefreshSession(
+                user_id=self.student_b_id,
+                family_id=family_id,
+                token_hash="audit-failure-colliding-user-token",
+                expires_at=now + timedelta(days=1),
+            ),
+        ]
+
+        with Session(self.engine) as session:
+            session.add_all(refresh_sessions)
+            session.commit()
+
+        def fail_audit_write(session, audit_log):
+            session.add(audit_log)
+            raise SQLAlchemyError("Simulated audit write failure.")
+
+        with TestClient(
+            self.app,
+            raise_server_exceptions=False,
+        ) as client:
+            with patch(
+                "app.audit.service.create_audit_log",
+                side_effect=fail_audit_write,
+            ):
+                response = client.delete(
+                    f"/api/admin/users/{self.student_a_id}"
+                    f"/sessions/{family_id}",
+                )
+
+        self.assertEqual(response.status_code, 500)
+
+        with Session(self.engine) as session:
+            stored_sessions = {
+                item.token_hash: item
+                for item in session.exec(
+                    select(RefreshSession)
+                ).all()
+            }
+
+        self.assertIsNone(
+            stored_sessions["audit-failure-target-token"].revoked_at
+        )
+        self.assertIsNone(
+            stored_sessions["audit-failure-other-family-token"].revoked_at
+        )
+        self.assertIsNone(
+            stored_sessions["audit-failure-colliding-user-token"].revoked_at
+        )
+        self.assertEqual(
+            self.get_audit_logs("USER_SESSION_REVOKED"),
+            [],
+        )
+
+    def test_user_detail_groups_refresh_sessions_by_family(self):
+        now = datetime.now(timezone.utc)
+        active_family_id = uuid4()
+        revoked_family_id = uuid4()
+        expired_family_id = uuid4()
+
+        refresh_sessions = [
+            RefreshSession(
+                user_id=self.student_a_id,
+                family_id=active_family_id,
+                token_hash="active-family-historical-token",
+                created_at=now - timedelta(days=3),
+                expires_at=now + timedelta(days=1),
+                revoked_at=now - timedelta(days=2),
+            ),
+            RefreshSession(
+                user_id=self.student_a_id,
+                family_id=active_family_id,
+                token_hash="active-family-current-token",
+                created_at=now - timedelta(days=1),
+                expires_at=now + timedelta(days=10),
+            ),
+            RefreshSession(
+                user_id=self.student_a_id,
+                family_id=revoked_family_id,
+                token_hash="revoked-family-old-token",
+                created_at=now - timedelta(days=5),
+                expires_at=now + timedelta(days=2),
+                revoked_at=now - timedelta(days=3),
+            ),
+            RefreshSession(
+                user_id=self.student_a_id,
+                family_id=revoked_family_id,
+                token_hash="revoked-family-current-token",
+                created_at=now - timedelta(days=4),
+                expires_at=now + timedelta(days=3),
+                revoked_at=now - timedelta(days=2),
+            ),
+            RefreshSession(
+                user_id=self.student_a_id,
+                family_id=expired_family_id,
+                token_hash="expired-family-token",
+                created_at=now - timedelta(days=6),
+                expires_at=now - timedelta(days=1),
+            ),
+        ]
+
+        with Session(self.engine) as session:
+            session.add_all(refresh_sessions)
+            session.commit()
+
+        response = self.client.get(
+            f"/api/admin/users/{self.student_a_id}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        sessions = response.json()["sessions"]
+        self.assertEqual(len(sessions), 3)
+        sessions_by_id = {
+            item["id"]: item
+            for item in sessions
+        }
+
+        active = sessions_by_id[str(active_family_id)]
+        self.assertTrue(active["is_active"])
+        self.assertIsNone(active["revoked_at"])
+        self.assertEqual(
+            datetime.fromisoformat(active["created_at"]).replace(
+                tzinfo=timezone.utc,
+            ),
+            now - timedelta(days=3),
+        )
+        self.assertEqual(
+            datetime.fromisoformat(active["expires_at"]).replace(
+                tzinfo=timezone.utc,
+            ),
+            now + timedelta(days=10),
+        )
+
+        revoked = sessions_by_id[str(revoked_family_id)]
+        self.assertFalse(revoked["is_active"])
+        self.assertEqual(
+            datetime.fromisoformat(revoked["revoked_at"]).replace(
+                tzinfo=timezone.utc,
+            ),
+            now - timedelta(days=2),
+        )
+
+        expired = sessions_by_id[str(expired_family_id)]
+        self.assertFalse(expired["is_active"])
+        self.assertIsNone(expired["revoked_at"])
+        self.assertNotIn("token_hash", sessions[0])
 
     def test_individual_unban_still_works(self):
         response = self.client.post(

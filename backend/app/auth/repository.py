@@ -157,6 +157,43 @@ def get_user_sessions(
     return list(session.exec(statement).all())
 
 
+def revoke_user_session_family(
+    session: Session,
+    user_id: UUID,
+    family_id: UUID,
+    commit: bool = True,
+) -> bool:
+    statement = (
+        update(RefreshSession)
+        .where(
+            RefreshSession.user_id == user_id,
+            RefreshSession.family_id == family_id,
+            RefreshSession.revoked_at.is_(None),
+        )
+        .values(revoked_at=datetime.now(timezone.utc))
+    )
+
+    result = session.exec(statement)
+
+    if commit:
+        session.commit()
+
+    return result.rowcount > 0
+
+
+def user_session_family_exists(
+    session: Session,
+    user_id: UUID,
+    family_id: UUID,
+) -> bool:
+    statement = select(RefreshSession.id).where(
+        RefreshSession.user_id == user_id,
+        RefreshSession.family_id == family_id,
+    )
+
+    return session.exec(statement).first() is not None
+
+
 def revoke_user_session(
     session: Session,
     user_id: UUID,
@@ -174,7 +211,11 @@ def revoke_user_session(
         return False
 
     # Revoke every refresh token belonging to this login session.
-    revoke_refresh_family(session, session_id)
+    revoke_user_session_family(
+        session,
+        user_id,
+        session_id,
+    )
 
     return True
 
