@@ -20,6 +20,7 @@ from app.auth.tokens import (
     generate_refresh_token,
     hash_refresh_token,
 )
+from app.auth.normalization import normalize_email
 
 
 # Login rate-limit configuration
@@ -77,7 +78,7 @@ def signup(
     session: Session,
     data: schemas.SignupRequest,
 ) -> dict:
-    email = str(data.email).strip().lower()
+    email = normalize_email(str(data.email))
 
     existing_user = repository.get_user_by_email(
         session,
@@ -110,7 +111,7 @@ def login(
     data: schemas.LoginRequest,
     ip_address: str,
 ) -> dict:
-    email = str(data.email).strip().lower()
+    email = normalize_email(str(data.email))
     now = datetime.now(timezone.utc)
 
     window_start = now - timedelta(
@@ -207,7 +208,7 @@ def update_user_profile(
         current_user.name = data.name
 
     if data.email is not None:
-        new_email = str(data.email).strip().lower()
+        new_email = normalize_email(str(data.email))
 
         if new_email != current_user.email:
             if data.current_password is None or not verify_password(

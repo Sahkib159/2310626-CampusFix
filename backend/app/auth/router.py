@@ -131,6 +131,7 @@ def login(
             "LOGIN_RATE_LIMITED",
             request,
             email=data.email,
+            ip_address=client_ip,
             details={
                 "reason": "Login rate limit exceeded",
             },
@@ -147,6 +148,7 @@ def login(
             "LOGIN_FAILED",
             request,
             email=data.email,
+            ip_address=client_ip,
             details={
                 "reason": "Invalid credentials or unavailable account",
             },
@@ -168,6 +170,7 @@ def login(
         actor_id=user.id if user else None,
         target_user_id=user.id if user else None,
         email=data.email,
+        ip_address=client_ip,
     )
 
     set_refresh_cookie(

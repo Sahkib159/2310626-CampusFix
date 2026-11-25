@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 
 import Header from "../components/Header"
+import SecurityDashboard from "../components/SecurityDashboard"
 import { useAuth } from "../contexts/AuthContext"
 
 import {
@@ -29,7 +30,7 @@ import {
 
 import "./AdminPage.css"
 
-type AdminTab = "overview" | "users" | "audit"
+type AdminTab = "overview" | "users" | "audit" | "security"
 
 const EMPTY_STATS: AdminDashboardStats = {
   total_users: 0,
@@ -857,6 +858,16 @@ export default function AdminPage() {
         >
           Audit Logs
         </button>
+
+        <button
+          className={activeTab === "security" ? "active" : ""}
+          onClick={() => {
+            clearMessages()
+            setActiveTab("security")
+          }}
+        >
+          Security
+        </button>
       </nav>
 
       {activeTab === "overview" && (
@@ -1474,6 +1485,10 @@ export default function AdminPage() {
             </div>
           </section>
         </section>
+      )}
+
+      {activeTab === "security" && (
+        <SecurityDashboard accessToken={accessToken} />
       )}
 
       {(loadingUserDetail || selectedUserDetail || userDetailError) && (

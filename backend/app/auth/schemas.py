@@ -7,6 +7,8 @@ from pydantic import (
     model_validator,
 )
 
+from app.auth.normalization import normalize_email
+
 
 class SignupRequest(BaseModel):
     name: str = Field(min_length=2, max_length=150)
@@ -21,7 +23,7 @@ class SignupRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def normalize_email(cls, value: str) -> str:
-        return value.lower()
+        return normalize_email(value)
 
 
 class LoginRequest(BaseModel):
@@ -31,7 +33,7 @@ class LoginRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def normalize_email(cls, value: str) -> str:
-        return value.strip().lower()
+        return normalize_email(value)
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -67,7 +69,7 @@ class ProfileUpdateRequest(BaseModel):
         value: EmailStr | None,
     ) -> EmailStr | None:
         if value is not None:
-            return value.strip().lower()
+            return normalize_email(str(value))
 
         return value
 

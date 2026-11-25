@@ -25,3 +25,42 @@ class AuditLogListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class SecurityAuditEventResponse(BaseModel):
+    id: UUID
+    action: str
+    email: str | None
+    ip_address: str
+    created_at: datetime
+    reason: str | None
+
+
+class SecurityIpSummary(BaseModel):
+    ip_address: str
+    failed_count: int
+    rate_limited_count: int
+    repeated: bool
+    last_failed_at: datetime | None
+
+
+class SecurityEmailSummary(BaseModel):
+    email: str
+    failed_count: int
+    rate_limited_count: int
+    repeated: bool
+    last_failed_at: datetime | None
+
+
+class SecurityDashboardResponse(BaseModel):
+    start_date: datetime
+    end_date: datetime
+    total_failed: int
+    total_rate_limited: int
+    by_ip: list[SecurityIpSummary]
+    by_email: list[SecurityEmailSummary]
+    events: list[SecurityAuditEventResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
