@@ -18,25 +18,32 @@ const MAX_RANGE_DAYS = 90
 const PAGE_SIZE = 50
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000
 
-function getUtcDate(value: Date): string {
-  return value.toISOString().slice(0, 10)
+function getLocalDate(value: Date): string {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, "0")
+  const day = String(value.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
 }
 
 function getDefaultDateFilters(): DateFilters {
   const end = new Date()
   const start = new Date(end)
-  start.setUTCDate(start.getUTCDate() - 6)
+  start.setDate(start.getDate() - 6)
 
   return {
-    start_date: getUtcDate(start),
-    end_date: getUtcDate(end),
+    start_date: getLocalDate(start),
+    end_date: getLocalDate(end),
   }
 }
 
 function toUtcDateRange(filters: DateFilters): DateFilters {
+  const start = new Date(`${filters.start_date}T00:00:00`)
+  const endExclusive = new Date(`${filters.end_date}T00:00:00`)
+  endExclusive.setDate(endExclusive.getDate() + 1)
+
   return {
-    start_date: `${filters.start_date}T00:00:00.000Z`,
-    end_date: `${filters.end_date}T23:59:59.999Z`,
+    start_date: start.toISOString(),
+    end_date: new Date(endExclusive.getTime() - 1).toISOString(),
   }
 }
 
