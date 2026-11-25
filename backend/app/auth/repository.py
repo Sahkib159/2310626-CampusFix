@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 from app.models.user import User
 from app.models.refresh_session import RefreshSession
 from app.models.login_attempt import LoginAttempt
+from app.auth.normalization import normalize_email
 
 
 # --------------------------------------------------
@@ -233,7 +234,7 @@ def record_login_attempt(
     """Persist one successful or failed login attempt."""
 
     attempt = LoginAttempt(
-        email=email.strip().lower(),
+        email=normalize_email(email),
         ip_address=ip_address,
         successful=successful,
         attempted_at=datetime.now(timezone.utc),
@@ -254,7 +255,7 @@ def count_failed_login_attempts_by_email(
     """Count failed login attempts for an email since a given time."""
 
     statement = select(LoginAttempt).where(
-        LoginAttempt.email == email.strip().lower(),
+        LoginAttempt.email == normalize_email(email),
         LoginAttempt.successful.is_(False),
         LoginAttempt.attempted_at >= since,
     )

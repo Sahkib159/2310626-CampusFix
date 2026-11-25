@@ -100,3 +100,56 @@ def get_audit_logs_for_export(
     )
 
     return records
+
+
+def get_security_audit_events(
+    session: Session,
+    *,
+    start_date: datetime,
+    end_date: datetime,
+    offset: int,
+    limit: int,
+) -> tuple[list[AuditLog], int]:
+    statement = select(AuditLog).where(
+        AuditLog.action.in_(("LOGIN_FAILED", "LOGIN_RATE_LIMITED")),
+        AuditLog.created_at >= start_date,
+        AuditLog.created_at <= end_date,
+    )
+    count_statement = (
+        select(func.count())
+        .select_from(statement.subquery())
+    )
+    total = session.exec(count_statement).one()
+
+    records_statement = (
+        statement
+        .order_by(AuditLog.created_at.desc(), AuditLog.id)
+        .offset(offset)
+        .limit(limit)
+    )
+
+    return list(session.exec(records_statement).all()), total
+
+
+def get_security_audit_event_rows(
+    session: Session,
+    *,
+    start_date: datetime,
+    end_date: datetime,
+) -> list[tuple[str, str | None, str, datetime]]:
+    statement = (
+        select(
+            AuditLog.action,
+            AuditLog.email,
+            AuditLog.ip_address,
+            AuditLog.created_at,
+        )
+        .where(
+            AuditLog.action.in_(("LOGIN_FAILED", "LOGIN_RATE_LIMITED")),
+            AuditLog.created_at >= start_date,
+            AuditLog.created_at <= end_date,
+        )
+        .order_by(AuditLog.created_at)
+    )
+
+    return list(session.exec(statement).all())

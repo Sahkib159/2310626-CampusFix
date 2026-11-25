@@ -123,6 +123,51 @@ export interface AuditLogList {
   total_pages: number
 }
 
+export interface AdminSecurityEvent {
+  id: string
+  action: "LOGIN_FAILED" | "LOGIN_RATE_LIMITED"
+  email: string | null
+  ip_address: string
+  created_at: string
+  reason: string | null
+}
+
+export interface AdminSecurityGroupSummary {
+  failed_count: number
+  rate_limited_count: number
+  repeated: boolean
+  last_failed_at: string | null
+}
+
+export interface AdminSecurityIpSummary extends AdminSecurityGroupSummary {
+  ip_address: string
+}
+
+export interface AdminSecurityEmailSummary extends AdminSecurityGroupSummary {
+  email: string
+}
+
+export interface AdminSecurityDashboard {
+  start_date: string
+  end_date: string
+  total_failed: number
+  total_rate_limited: number
+  by_ip: AdminSecurityIpSummary[]
+  by_email: AdminSecurityEmailSummary[]
+  events: AdminSecurityEvent[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+export interface AdminSecurityFilters {
+  start_date: string
+  end_date: string
+  page?: number
+  page_size?: number
+}
+
 export interface AdminUserFilters {
   search?: string
   role?: string
@@ -586,4 +631,19 @@ export async function exportAdminAuditLogs(
   }
 
   return response.blob()
+}
+
+export async function getAdminSecurityDashboard(
+  accessToken: string,
+  filters: AdminSecurityFilters
+): Promise<AdminSecurityDashboard> {
+  const response = await authenticatedFetch(
+    `${API_URL}/admin/security/failed-logins${buildQueryString(filters)}`,
+    {
+      headers: getAuthHeaders(accessToken),
+    },
+    accessToken
+  )
+
+  return handleResponse<AdminSecurityDashboard>(response)
 }

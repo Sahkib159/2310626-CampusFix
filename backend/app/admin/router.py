@@ -1,4 +1,5 @@
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -23,6 +24,8 @@ from app.admin.schemas import (
 )
 
 from app.audit.service import record_event
+from app.audit.service import get_security_dashboard
+from app.audit.schemas import SecurityDashboardResponse
 
 
 router = APIRouter(
@@ -263,4 +266,26 @@ def recent_users(
     return service.get_recent_users(
         session,
         limit,
+    )
+
+
+@router.get(
+    "/security/failed-logins",
+    response_model=SecurityDashboardResponse,
+)
+def security_failed_logins(
+    start_date: datetime | None = Query(default=None),
+    end_date: datetime | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+    current_admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    """Return login security events and summaries for at most 90 days."""
+    return get_security_dashboard(
+        session,
+        start_date=start_date,
+        end_date=end_date,
+        page=page,
+        page_size=page_size,
     )
