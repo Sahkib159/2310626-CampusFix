@@ -6,7 +6,7 @@ import {
   type FormEvent,
 } from "react"
 
-import { Link, useParams } from "react-router"
+import { Link, useNavigate, useParams } from "react-router"
 
 import Header from "../components/Header"
 import GroupRequestsSection from "../components/GroupRequestsSection"
@@ -19,6 +19,7 @@ import {
   addGroupMember,
   updateGroupMemberPermissions,
   removeGroupMember,
+  deleteGroup,
 } from "../services/groups"
 
 import type {
@@ -33,6 +34,7 @@ import "./GroupDetailsPage.css"
 export default function GroupDetailsPage() {
   const { groupId } = useParams<{ groupId: string }>()
   const { accessToken } = useAuth()
+  const navigate = useNavigate()
 
   const [group, setGroup] = useState<Group | null>(null)
   const [members, setMembers] = useState<GroupMember[]>([])
@@ -54,6 +56,7 @@ export default function GroupDetailsPage() {
     useState<Record<string, UpdateGroupMemberPermissions>>({})
 
   const [addingMember, setAddingMember] = useState(false)
+  const [deletingGroup, setDeletingGroup] = useState(false)
   const [workingMember, setWorkingMember] = useState<string | null>(null)
 
   const loadGroupDetails = useCallback(async () => {
@@ -212,6 +215,40 @@ export default function GroupDetailsPage() {
       )
     } finally {
       setWorkingMember(null)
+    }
+  }
+
+  async function handleDeleteGroup() {
+    if (!groupId || !accessToken || !group?.is_owner || group.is_archived) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Permanently delete "${group.name}"? Groups containing service requests cannot be deleted.`
+    )
+
+    if (!confirmed) return
+
+    try {
+      setDeletingGroup(true)
+      setError("")
+      setSuccess("")
+
+      await deleteGroup(groupId, accessToken)
+      navigate("/groups")
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to delete group."
+
+      setError(
+        message.toLowerCase().includes(
+          "cannot delete group containing service requests"
+        )
+          ? "This group contains service requests and cannot be permanently deleted. Archive it instead to preserve its request history."
+          : message
+      )
+    } finally {
+      setDeletingGroup(false)
     }
   }
 
@@ -544,6 +581,17 @@ export default function GroupDetailsPage() {
         />
 
         <div className="group-details-footer">
+          {group.is_owner && !group.is_archived && (
+            <button
+              type="button"
+              className="group-remove-button"
+              onClick={() => void handleDeleteGroup()}
+              disabled={deletingGroup}
+            >
+              {deletingGroup ? "Deleting..." : "Delete Group"}
+            </button>
+          )}
+
           <button
             type="button"
             className="refresh-button"
