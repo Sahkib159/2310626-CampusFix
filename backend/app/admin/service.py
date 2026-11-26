@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import Session
 
 from app.auth.repository import (
@@ -22,6 +23,10 @@ from app.admin.repository import (
     get_user_recent_activity,
     get_admin_dashboard_stats,
     get_recent_registrations,
+    get_admin_groups,
+    get_admin_group_by_id,
+    get_admin_group_request_count,
+    delete_admin_group as delete_admin_group_record,
 )
 
 from app.admin.schemas import (
@@ -35,8 +40,13 @@ from app.admin.schemas import (
     AdminSessionResponse,
     BulkUserStatusResult,
     BulkUserOperationResponse,
+    AdminGroupListResponse,
+    AdminGroupResponse,
+    AdminGroupDeleteResult,
+    BulkGroupDeleteResponse,
 )
 
+from app.models.group import Group
 from app.models.user import User
 from app.models.refresh_session import RefreshSession
 from app.audit.service import record_event
@@ -45,6 +55,206 @@ from app.audit.service import record_event
 logger = logging.getLogger(__name__)
 
 VALID_ROLES = {"STUDENT", "STAFF", "ADMIN"}
+
+
+def list_groups(
+    session: Session,
+    page: int,
+    page_size: int,
+) -> AdminGroupListResponse:
+    rows, total = get_admin_groups(
+        session,
+        offset=(page - 1) * page_size,
+        limit=page_size,
+    )
+
+    return AdminGroupListResponse(
+        groups=[
+            AdminGroupResponse(
+                id=group.id,
+                name=group.name,
+                description=group.description,
+                owner_id=owner.id,
+                owner_name=owner.name,
+                owner_email=owner.email,
+                member_count=member_count,
+                request_count=request_count,
+                is_archived=group.is_archived,
+                created_at=group.created_at,
+                updated_at=group.updated_at,
+            )
+            for group, owner, member_count, request_count in rows
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=math.ceil(total / page_size) if total else 0,
+    )
+
+
+def _delete_loaded_group(
+    session: Session,
+    group: Group,
+    current_admin: User,
+    request: Request,
+) -> AdminGroupDeleteResult:
+    group_id = group.id
+    group_name = group.name
+
+    try:
+        request_count = get_admin_group_request_count(session, group_id)
+    except SQLAlchemyError:
+        session.rollback()
+        logger.exception(
+            "Database error while checking requests for group %s",
+            group_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The group could not be deleted.",
+        )
+
+    if request_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete a group containing service requests.",
+        )
+
+    try:
+        delete_admin_group_record(session, group)
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The group has related records and cannot be deleted.",
+        )
+    except SQLAlchemyError:
+        session.rollback()
+        logger.exception(
+            "Database error while deleting group %s",
+            group_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The group could not be deleted.",
+        )
+
+    try:
+        record_event(
+            session,
+            "GROUP_DELETED",
+            request,
+            actor_id=current_admin.id,
+            details={
+                "group_id": str(group_id),
+                "group_name": group_name,
+            },
+        )
+    except SQLAlchemyError:
+        session.rollback()
+        logger.exception(
+            "Audit logging failed while deleting group %s",
+            group_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The group could not be deleted.",
+        )
+
+    return AdminGroupDeleteResult(
+        group_id=group_id,
+        group_name=group_name,
+        success=True,
+        message="Group deleted successfully.",
+    )
+
+
+def delete_group(
+    session: Session,
+    group_id: UUID,
+    current_admin: User,
+    request: Request,
+) -> AdminGroupDeleteResult:
+    group = get_admin_group_by_id(session, group_id)
+    if group is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found.",
+        )
+
+    return _delete_loaded_group(
+        session,
+        group,
+        current_admin,
+        request,
+    )
+
+
+def bulk_delete_groups(
+    session: Session,
+    group_ids: list[UUID],
+    current_admin: User,
+    request: Request,
+) -> BulkGroupDeleteResponse:
+    results = []
+
+    for group_id in group_ids:
+        group = None
+        try:
+            group = get_admin_group_by_id(session, group_id)
+            if group is None:
+                results.append(
+                    AdminGroupDeleteResult(
+                        group_id=group_id,
+                        success=False,
+                        message="Group not found.",
+                    )
+                )
+                continue
+
+            results.append(
+                _delete_loaded_group(
+                    session,
+                    group,
+                    current_admin,
+                    request,
+                )
+            )
+        except HTTPException as exc:
+            session.rollback()
+            results.append(
+                AdminGroupDeleteResult(
+                    group_id=group_id,
+                    group_name=group.name if group is not None else None,
+                    success=False,
+                    message=str(exc.detail),
+                )
+            )
+        except Exception:
+            session.rollback()
+            logger.exception(
+                "Unexpected error while bulk-deleting group %s",
+                group_id,
+            )
+            results.append(
+                AdminGroupDeleteResult(
+                    group_id=group_id,
+                    group_name=group.name if group is not None else None,
+                    success=False,
+                    message=(
+                        "An unexpected error occurred while deleting "
+                        "this group."
+                    ),
+                )
+            )
+
+    succeeded = sum(1 for item in results if item.success)
+    return BulkGroupDeleteResponse(
+        total=len(results),
+        succeeded=succeeded,
+        failed=len(results) - succeeded,
+        results=results,
+    )
 
 
 def list_users(

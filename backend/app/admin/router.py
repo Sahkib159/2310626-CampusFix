@@ -21,6 +21,10 @@ from app.admin.schemas import (
     ChangeUserRoleRequest,
     AdminDashboardStatsResponse,
     RecentRegistrationResponse,
+    AdminGroupListResponse,
+    AdminGroupDeleteResult,
+    BulkGroupDeleteRequest,
+    BulkGroupDeleteResponse,
 )
 
 from app.audit.service import record_event
@@ -32,6 +36,59 @@ router = APIRouter(
     prefix="/api/admin",
     tags=["Administration"],
 )
+
+
+@router.get(
+    "/groups",
+    response_model=AdminGroupListResponse,
+)
+def list_groups(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    current_admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    return service.list_groups(
+        session,
+        page,
+        page_size,
+    )
+
+
+@router.post(
+    "/groups/bulk-delete",
+    response_model=BulkGroupDeleteResponse,
+)
+def bulk_delete_groups(
+    data: BulkGroupDeleteRequest,
+    request: Request,
+    current_admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    return service.bulk_delete_groups(
+        session,
+        data.group_ids,
+        current_admin,
+        request,
+    )
+
+
+@router.delete(
+    "/groups/{group_id}",
+    response_model=AdminGroupDeleteResult,
+)
+def delete_group(
+    group_id: UUID,
+    request: Request,
+    current_admin: User = Depends(get_current_admin),
+    session: Session = Depends(get_session),
+):
+    return service.delete_group(
+        session,
+        group_id,
+        current_admin,
+        request,
+    )
 
 
 @router.get(

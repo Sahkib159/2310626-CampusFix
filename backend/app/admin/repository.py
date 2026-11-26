@@ -11,6 +11,67 @@ from app.models.group import Group, GroupMember
 from app.models.audit_log import AuditLog
 
 
+def get_admin_groups(
+    session: Session,
+    offset: int,
+    limit: int,
+) -> tuple[list[tuple[Group, User, int, int]], int]:
+    member_count = (
+        select(func.count(GroupMember.id))
+        .where(GroupMember.group_id == Group.id)
+        .correlate(Group)
+        .scalar_subquery()
+        + 1
+    )
+    request_count = (
+        select(func.count(ServiceRequest.id))
+        .where(ServiceRequest.group_id == Group.id)
+        .correlate(Group)
+        .scalar_subquery()
+    )
+
+    total = session.exec(
+        select(func.count()).select_from(Group)
+    ).one()
+
+    statement = (
+        select(Group, User, member_count, request_count)
+        .join(User, User.id == Group.owner_id)
+        .order_by(Group.created_at.desc(), Group.id)
+        .offset(offset)
+        .limit(limit)
+    )
+
+    return list(session.exec(statement).all()), total
+
+
+def get_admin_group_by_id(
+    session: Session,
+    group_id: UUID,
+) -> Group | None:
+    return session.get(Group, group_id)
+
+
+def get_admin_group_request_count(
+    session: Session,
+    group_id: UUID,
+) -> int:
+    statement = (
+        select(func.count())
+        .select_from(ServiceRequest)
+        .where(ServiceRequest.group_id == group_id)
+    )
+    return session.exec(statement).one()
+
+
+def delete_admin_group(
+    session: Session,
+    group: Group,
+) -> None:
+    session.delete(group)
+    session.flush()
+
+
 def get_admin_users(
     session: Session,
     search: str | None,

@@ -90,6 +90,35 @@ class BulkUserOperationResponse(BaseModel):
     results: list[BulkUserStatusResult]
 
 
+class BulkGroupDeleteRequest(BaseModel):
+    group_ids: list[UUID] = Field(
+        min_length=1,
+        max_length=100,
+    )
+
+    @field_validator("group_ids")
+    @classmethod
+    def validate_unique_group_ids(cls, group_ids: list[UUID]):
+        if len(group_ids) != len(set(group_ids)):
+            raise ValueError("Duplicate group IDs are not allowed.")
+
+        return group_ids
+
+
+class AdminGroupDeleteResult(BaseModel):
+    group_id: UUID
+    group_name: str | None = None
+    success: bool
+    message: str
+
+
+class BulkGroupDeleteResponse(BaseModel):
+    total: int
+    succeeded: int
+    failed: int
+    results: list[AdminGroupDeleteResult]
+
+
 class ChangeUserRoleRequest(BaseModel):
     role: str = Field(
         min_length=1,
@@ -141,6 +170,28 @@ class AdminGroupMembershipResponse(BaseModel):
     can_edit_requests: bool
     can_assign_requests: bool
     created_at: datetime
+
+
+class AdminGroupResponse(BaseModel):
+    id: UUID
+    name: str
+    description: str | None
+    owner_id: UUID
+    owner_name: str
+    owner_email: str
+    member_count: int
+    request_count: int
+    is_archived: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminGroupListResponse(BaseModel):
+    groups: list[AdminGroupResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class AdminSessionResponse(BaseModel):

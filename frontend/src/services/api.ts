@@ -65,6 +65,42 @@ export interface AdminGroupMembership {
   created_at: string
 }
 
+export interface AdminGroup {
+  id: string
+  name: string
+  description: string | null
+  owner_id: string
+  owner_name: string
+  owner_email: string
+  member_count: number
+  request_count: number
+  is_archived: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminGroupList {
+  groups: AdminGroup[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+export interface AdminGroupDeleteResult {
+  group_id: string
+  group_name: string | null
+  success: boolean
+  message: string
+}
+
+export interface BulkAdminGroupDeleteResponse {
+  total: number
+  succeeded: number
+  failed: number
+  results: AdminGroupDeleteResult[]
+}
+
 export interface AdminSession {
   id: string
   created_at: string
@@ -441,6 +477,61 @@ export async function getAdminUsers(
   )
 
   return handleResponse<AdminUserList>(response)
+}
+
+export async function getAdminGroups(
+  accessToken: string,
+  page = 1,
+  pageSize = 20
+): Promise<AdminGroupList> {
+  const response = await authenticatedFetch(
+    `${API_URL}/admin/groups${buildQueryString({
+      page,
+      page_size: pageSize,
+    })}`,
+    {
+      headers: getAuthHeaders(accessToken),
+    },
+    accessToken
+  )
+
+  return handleResponse<AdminGroupList>(response)
+}
+
+export async function deleteAdminGroup(
+  groupId: string,
+  accessToken: string
+): Promise<AdminGroupDeleteResult> {
+  const response = await authenticatedFetch(
+    `${API_URL}/admin/groups/${encodeURIComponent(groupId)}`,
+    {
+      method: "DELETE",
+      headers: getAuthHeaders(accessToken),
+    },
+    accessToken
+  )
+
+  return handleResponse<AdminGroupDeleteResult>(response)
+}
+
+export async function bulkDeleteAdminGroups(
+  accessToken: string,
+  groupIds: string[]
+): Promise<BulkAdminGroupDeleteResponse> {
+  const response = await authenticatedFetch(
+    `${API_URL}/admin/groups/bulk-delete`,
+    {
+      method: "POST",
+      headers: {
+        ...getAuthHeaders(accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ group_ids: groupIds }),
+    },
+    accessToken
+  )
+
+  return handleResponse<BulkAdminGroupDeleteResponse>(response)
 }
 
 // ==========================================

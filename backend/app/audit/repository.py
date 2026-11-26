@@ -12,8 +12,9 @@ def create_audit_log(
     audit_log: AuditLog,
 ) -> AuditLog:
     session.add(audit_log)
-    session.commit()
+    session.flush()
     session.refresh(audit_log)
+    session.commit()
     return audit_log
 
 
