@@ -15,7 +15,10 @@ from app.auth.config import (
     REFRESH_TOKEN_EXPIRE_DAYS,
     COOKIE_SAMESITE,
 )
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import (
+    get_current_user,
+    get_optional_current_user,
+)
 from app.audit.service import record_event
 
 
@@ -228,19 +231,18 @@ def logout(
     request: Request,
     response: Response,
     session: Session = Depends(get_session),
+    current_user: User | None = Depends(get_optional_current_user),
 ):
     refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
 
-    logout_user = None
-
-    if refresh_token:
-        logout_user = service.logout(
-            session,
-            refresh_token,
-        )
+    logout_user = service.logout(
+        session,
+        refresh_token,
+        current_user,
+    )
 
     # Never store refresh tokens in audit logs.
-    # Record the user identity when the refresh token is valid.
+    # Record the user identity when either credential identifies them.
     record_event(
         session,
         "LOGOUT",
@@ -321,6 +323,20 @@ def change_password(
         )
 
     except ValueError as exc:
+        if str(exc) == "Current password is incorrect.":
+            record_event(
+                session,
+                "PASSWORD_CHANGE_FAILED",
+                request,
+                actor_id=current_user.id,
+                target_user_id=current_user.id,
+                email=current_user.email,
+                ip_address=get_client_ip(request),
+                details={
+                    "reason": "Current password is incorrect.",
+                },
+            )
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),

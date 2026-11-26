@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     try {
-      await logoutRequest()
+      await logoutRequest(accessToken)
     } finally {
       setCurrentAccessToken(null)
       setUser(null)
