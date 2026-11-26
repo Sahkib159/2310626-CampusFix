@@ -322,6 +322,68 @@
   line-height: 1.5;
 }
 
+.admin-group-name,
+.admin-group-owner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+
+.admin-group-description,
+.admin-group-owner span {
+  max-width: 280px;
+  color: #94a3b8;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.admin-group-results ul {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-group-result {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 0.6fr) minmax(180px, 2fr);
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid #e7edf5;
+  border-radius: 9px;
+  color: #475569;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.admin-group-result.success {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.admin-group-result.failure {
+  background: #fff7f7;
+  border-color: #fecaca;
+}
+
+.admin-group-result-status {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-group-result.success .admin-group-result-status {
+  color: #047857;
+}
+
+.admin-group-result.failure .admin-group-result-status {
+  color: #b91c1c;
+}
+
 .admin-role-bars {
   display: flex;
   flex-direction: column;
@@ -1059,6 +1121,11 @@
 
   .admin-bulk-actions .admin-action-button {
     flex: 1;
+  }
+
+  .admin-group-result {
+    grid-template-columns: 1fr;
+    gap: 5px;
   }
 }
 

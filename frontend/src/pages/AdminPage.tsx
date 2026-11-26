@@ -8,29 +8,36 @@ import { useAuth } from "../contexts/AuthContext"
 import {
   banAdminUser,
   bulkBanAdminUsers,
+  bulkDeleteAdminGroups,
   bulkUnbanAdminUsers,
   changeAdminUserRole,
+  deleteAdminGroup,
   exportAdminAuditLogs,
   getAdminAuditLogs,
   getAdminDashboardStats,
+  getAdminGroups,
   getAdminUserDetail,
   getAdminUsers,
   getRecentAdminUsers,
   revokeAdminUserSession,
   unbanAdminUser,
+  type AdminGroup,
+  type AdminGroupDeleteResult,
   type AdminDashboardStats,
+  type AdminGroupList,
   type AdminSession,
   type AdminUser,
   type AdminUserDetail,
   type AdminUserFilters,
   type AuditLog,
   type AuditLogFilters,
+  type BulkAdminGroupDeleteResponse,
   type RecentAdminUser,
 } from "../services/api"
 
 import "./AdminPage.css"
 
-type AdminTab = "overview" | "users" | "audit" | "security"
+type AdminTab = "overview" | "users" | "groups" | "audit" | "security"
 
 const EMPTY_STATS: AdminDashboardStats = {
   total_users: 0,
@@ -78,6 +85,17 @@ export default function AdminPage() {
   const [userRoleFilter, setUserRoleFilter] = useState("")
   const [userStatusFilter, setUserStatusFilter] = useState("")
 
+  const [groups, setGroups] = useState<AdminGroup[]>([])
+  const [groupsTotal, setGroupsTotal] = useState(0)
+  const [groupsTotalPages, setGroupsTotalPages] = useState(0)
+  const [groupsPage, setGroupsPage] = useState(1)
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(
+    new Set()
+  )
+  const [groupOperationResults, setGroupOperationResults] = useState<
+    AdminGroupDeleteResult[]
+  >([])
+
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [auditTotal, setAuditTotal] = useState(0)
   const [auditTotalPages, setAuditTotalPages] = useState(0)
@@ -89,11 +107,14 @@ export default function AdminPage() {
 
   const [loadingOverview, setLoadingOverview] = useState(false)
   const [loadingUsers, setLoadingUsers] = useState(false)
+  const [loadingGroups, setLoadingGroups] = useState(false)
   const [loadingAudit, setLoadingAudit] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [workingUserId, setWorkingUserId] = useState<string | null>(null)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
   const [bulkRunning, setBulkRunning] = useState(false)
+  const [workingGroupId, setWorkingGroupId] = useState<string | null>(null)
+  const [groupBulkRunning, setGroupBulkRunning] = useState(false)
 
   const [selectedUserDetail, setSelectedUserDetail] =
     useState<AdminUserDetail | null>(null)
@@ -152,6 +173,46 @@ export default function AdminPage() {
     }
   }, [accessToken, userFilters])
 
+  const loadGroups = useCallback(async () => {
+    if (!accessToken) return false
+
+    setLoadingGroups(true)
+
+    try {
+      const result: AdminGroupList = await getAdminGroups(
+        accessToken,
+        groupsPage,
+        20
+      )
+      const lastPage = Math.max(result.total_pages, 1)
+
+      if (groupsPage > lastPage) {
+        setGroupsPage(lastPage)
+        return true
+      }
+
+      setGroups(result.groups)
+      setGroupsTotal(result.total)
+      setGroupsTotalPages(result.total_pages)
+      const currentPageGroupIds = new Set(
+        result.groups.map((group) => group.id)
+      )
+      setSelectedGroupIds((current) =>
+        new Set(
+          Array.from(current).filter((groupId) =>
+            currentPageGroupIds.has(groupId)
+          )
+        )
+      )
+      return true
+    } catch (err) {
+      setError(getErrorMessage(err))
+      return false
+    } finally {
+      setLoadingGroups(false)
+    }
+  }, [accessToken, groupsPage])
+
   const loadAuditLogs = useCallback(async () => {
     if (!accessToken) return
 
@@ -179,6 +240,12 @@ export default function AdminPage() {
       void loadUsers()
     }
   }, [activeTab, loadUsers])
+
+  useEffect(() => {
+    if (activeTab === "groups") {
+      void loadGroups()
+    }
+  }, [activeTab, loadGroups])
 
   useEffect(() => {
     if (activeTab === "audit") {
@@ -690,6 +757,142 @@ export default function AdminPage() {
     }
   }
 
+  function toggleGroupSelection(groupId: string) {
+    if (groupBulkRunning || workingGroupId !== null) return
+
+    setSelectedGroupIds((current) => {
+      const next = new Set(current)
+      if (next.has(groupId)) {
+        next.delete(groupId)
+      } else {
+        next.add(groupId)
+      }
+      return next
+    })
+  }
+
+  function toggleSelectAllGroups() {
+    if (groupBulkRunning || workingGroupId !== null) return
+
+    const allSelected =
+      groups.length > 0 &&
+      groups.every((group) => selectedGroupIds.has(group.id))
+
+    setSelectedGroupIds((current) => {
+      const next = new Set(current)
+      if (allSelected) {
+        groups.forEach((group) => next.delete(group.id))
+      } else {
+        groups.forEach((group) => next.add(group.id))
+      }
+      return next
+    })
+  }
+
+  async function handleDeleteGroup(group: AdminGroup) {
+    if (!accessToken || workingGroupId !== null || groupBulkRunning) return
+
+    const confirmed = window.confirm(
+      `Permanently delete "${group.name}"? Groups containing service requests cannot be deleted.`
+    )
+
+    if (!confirmed) return
+
+    clearMessages()
+    setGroupOperationResults([])
+    setWorkingGroupId(group.id)
+
+    try {
+      const result = await deleteAdminGroup(group.id, accessToken)
+      setGroupOperationResults([result])
+
+      if (!result.success) {
+        showError(result.message)
+        return
+      }
+
+      setSelectedGroupIds((current) => {
+        const next = new Set(current)
+        next.delete(group.id)
+        return next
+      })
+
+      const refreshed = await loadGroups()
+      if (refreshed) {
+        showSuccess(result.message)
+      } else {
+        showError(
+          `${result.message} The group list could not be refreshed; its display may be stale.`
+        )
+      }
+    } catch (err) {
+      const message = getErrorMessage(err)
+      setGroupOperationResults([
+        {
+          group_id: group.id,
+          group_name: group.name,
+          success: false,
+          message,
+        },
+      ])
+      showError(message)
+    } finally {
+      setWorkingGroupId(null)
+    }
+  }
+
+  async function handleBulkDeleteGroups() {
+    if (!accessToken || groupBulkRunning || workingGroupId !== null) return
+
+    const groupIds = Array.from(selectedGroupIds)
+    if (groupIds.length === 0) {
+      showError("Select at least one group to delete.")
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Permanently delete ${groupIds.length} selected group${groupIds.length === 1 ? "" : "s"}? Groups containing service requests will fail individually.`
+    )
+
+    if (!confirmed) return
+
+    clearMessages()
+    setGroupOperationResults([])
+    setGroupBulkRunning(true)
+
+    try {
+      const result: BulkAdminGroupDeleteResponse =
+        await bulkDeleteAdminGroups(accessToken, groupIds)
+      setGroupOperationResults(result.results)
+      setSelectedGroupIds(
+        new Set(
+          result.results
+            .filter((item) => !item.success)
+            .map((item) => item.group_id)
+        )
+      )
+
+      const refreshed = await loadGroups()
+      const summary =
+        `Bulk delete complete: ${result.succeeded} succeeded, ` +
+        `${result.failed} failed.`
+
+      if (!refreshed) {
+        showError(
+          `${summary} The group list could not be refreshed; its display may be stale.`
+        )
+      } else if (result.failed > 0) {
+        showError(`${summary} Review the per-group results below.`)
+      } else {
+        showSuccess(summary)
+      }
+    } catch (err) {
+      showError(getErrorMessage(err))
+    } finally {
+      setGroupBulkRunning(false)
+    }
+  }
+
   async function handleRoleChange(
     target: AdminUser,
     newRole: string
@@ -761,6 +964,8 @@ export default function AdminPage() {
       await loadOverview()
     } else if (activeTab === "users") {
       await loadUsers()
+    } else if (activeTab === "groups") {
+      await loadGroups()
     } else {
       await loadAuditLogs()
     }
@@ -789,6 +994,9 @@ export default function AdminPage() {
       isBulkSelectable(target) &&
       target.is_banned
   ).length
+  const allGroupsSelected =
+    groups.length > 0 &&
+    groups.every((group) => selectedGroupIds.has(group.id))
 
   return (
     <div className="app admin-app">
@@ -804,7 +1012,14 @@ export default function AdminPage() {
         <button
           className="admin-refresh-button"
           onClick={() => void refreshCurrentTab()}
-          disabled={loadingOverview || loadingUsers || loadingAudit}
+          disabled={
+            loadingOverview ||
+            loadingUsers ||
+            loadingGroups ||
+            loadingAudit ||
+            groupBulkRunning ||
+            workingGroupId !== null
+          }
         >
           ↻ Refresh data
         </button>
@@ -847,6 +1062,16 @@ export default function AdminPage() {
           }}
         >
           User Management
+        </button>
+
+        <button
+          className={activeTab === "groups" ? "active" : ""}
+          onClick={() => {
+            clearMessages()
+            setActiveTab("groups")
+          }}
+        >
+          Groups
         </button>
 
         <button
@@ -1334,6 +1559,237 @@ export default function AdminPage() {
               </div>
             </div>
           </section>
+        </section>
+      )}
+
+      {activeTab === "groups" && (
+        <section className="admin-section">
+          <div className="admin-section-heading">
+            <div>
+              <h3>Group management</h3>
+              <p>
+                Review campus groups and remove groups without service
+                requests.
+              </p>
+            </div>
+
+            <span className="admin-result-count">
+              {groupsTotal} groups
+            </span>
+          </div>
+
+          <div className="admin-bulk-toolbar">
+            <div className="admin-bulk-selection">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={allGroupsSelected}
+                  disabled={
+                    groupBulkRunning ||
+                    workingGroupId !== null ||
+                    groups.length === 0
+                  }
+                  onChange={toggleSelectAllGroups}
+                  aria-label="Select all groups on this page"
+                />
+                <span>Select all on this page</span>
+              </label>
+              <strong>{selectedGroupIds.size} selected</strong>
+            </div>
+
+            <div className="admin-bulk-actions">
+              <button
+                type="button"
+                className="admin-action-button ban"
+                disabled={
+                  groupBulkRunning ||
+                  workingGroupId !== null ||
+                  selectedGroupIds.size === 0
+                }
+                onClick={() => void handleBulkDeleteGroups()}
+              >
+                {groupBulkRunning
+                  ? "Deleting..."
+                  : `Delete selected (${selectedGroupIds.size})`}
+              </button>
+            </div>
+          </div>
+
+          <section className="admin-panel">
+            {loadingGroups ? (
+              <div className="admin-loading">Loading groups...</div>
+            ) : groups.length === 0 ? (
+              <div className="admin-empty">No groups found.</div>
+            ) : (
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th className="admin-select-column">
+                        <input
+                          type="checkbox"
+                          checked={allGroupsSelected}
+                          disabled={
+                            groupBulkRunning ||
+                            workingGroupId !== null ||
+                            groups.length === 0
+                          }
+                          onChange={toggleSelectAllGroups}
+                          aria-label="Select all groups on this page"
+                        />
+                      </th>
+                      <th>Group</th>
+                      <th>Owner</th>
+                      <th>Members</th>
+                      <th>Requests</th>
+                      <th>Status</th>
+                      <th>Created</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {groups.map((group) => (
+                      <tr key={group.id}>
+                        <td className="admin-select-column">
+                          <input
+                            type="checkbox"
+                            checked={selectedGroupIds.has(group.id)}
+                            disabled={
+                              groupBulkRunning || workingGroupId !== null
+                            }
+                            onChange={() => toggleGroupSelection(group.id)}
+                            aria-label={`Select ${group.name}`}
+                          />
+                        </td>
+                        <td>
+                          <div className="admin-group-name">
+                            <strong className="admin-user-name">
+                              {group.name}
+                            </strong>
+                            <span className="admin-group-description">
+                              {group.description || "No description"}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="admin-group-owner">
+                            <strong>{group.owner_name}</strong>
+                            <span>{group.owner_email}</span>
+                          </div>
+                        </td>
+                        <td>{group.member_count}</td>
+                        <td>{group.request_count}</td>
+                        <td>
+                          <span
+                            className={`admin-status-badge ${
+                              group.is_archived ? "inactive" : "active"
+                            }`}
+                          >
+                            {group.is_archived ? "Archived" : "Active"}
+                          </span>
+                        </td>
+                        <td>{formatDate(group.created_at)}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="admin-action-button ban"
+                            disabled={
+                              groupBulkRunning || workingGroupId !== null
+                            }
+                            onClick={() => void handleDeleteGroup(group)}
+                          >
+                            {workingGroupId === group.id
+                              ? "Deleting..."
+                              : "Delete"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="admin-pagination">
+              <span>
+                Page {groupsPage} of {Math.max(groupsTotalPages, 1)}
+              </span>
+
+              <div>
+                <button
+                  disabled={
+                    groupsPage <= 1 ||
+                    loadingGroups ||
+                    groupBulkRunning ||
+                    workingGroupId !== null
+                  }
+                  onClick={() => {
+                    setSelectedGroupIds(new Set())
+                    setGroupsPage((page) => page - 1)
+                  }}
+                >
+                  Previous
+                </button>
+
+                <button
+                  disabled={
+                    groupsPage >= groupsTotalPages ||
+                    loadingGroups ||
+                    groupBulkRunning ||
+                    workingGroupId !== null
+                  }
+                  onClick={() => {
+                    setSelectedGroupIds(new Set())
+                    setGroupsPage((page) => page + 1)
+                  }}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {groupOperationResults.length > 0 && (
+            <section
+              className="admin-panel admin-group-results"
+              aria-live="polite"
+            >
+              <div className="admin-panel-heading">
+                <div>
+                  <h3>Deletion results</h3>
+                  <p>Each selected group is reported separately.</p>
+                </div>
+              </div>
+
+              <ul>
+                {groupOperationResults.map((result) => {
+                  const groupName =
+                    result.group_name ||
+                    groups.find((group) => group.id === result.group_id)
+                      ?.name ||
+                    result.group_id
+
+                  return (
+                    <li
+                      className={
+                        result.success
+                          ? "admin-group-result success"
+                          : "admin-group-result failure"
+                      }
+                      key={result.group_id}
+                    >
+                      <span className="admin-group-result-status">
+                        {result.success ? "Succeeded" : "Failed"}
+                      </span>
+                      <strong>{groupName}</strong>
+                      <span>{result.message}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
         </section>
       )}
 
