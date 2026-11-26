@@ -121,7 +121,13 @@ if (!(Test-Path .env)) {
 }
 ```
 
-Edit `backend/.env` and provide your PostgreSQL database URL and a secure JWT secret key.
+Edit `backend/.env` and provide your database URL, a cryptographically random
+`JWT_SECRET_KEY`, and a separate `PASSWORD_PEPPER` (each at least 32 bytes).
+
+Keep `ACCESS_TOKEN_EXPIRE_MINUTES` between 1 and 15, and use
+`COOKIE_SECURE=true` with an appropriate `COOKIE_SAMESITE` setting in
+production. Use the placeholders in `backend/.env.example` only as a template;
+never use them as deployed secrets.
 
 Apply database migrations:
 

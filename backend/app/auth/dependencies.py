@@ -69,6 +69,26 @@ def get_current_user(
     return user
 
 
+def get_optional_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(
+        bearer_scheme
+    ),
+    session: Session = Depends(get_session),
+) -> User | None:
+    if credentials is None:
+        return None
+
+    try:
+        return get_current_user(credentials, session)
+    except HTTPException as exc:
+        if exc.status_code in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        ):
+            return None
+        raise
+
+
 def get_current_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:

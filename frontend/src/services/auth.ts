@@ -40,6 +40,17 @@ export interface PasswordChangeData {
   new_password: string
 }
 
+export interface UserSession {
+  id: string
+  created_at: string
+  expires_at: string
+  revoked: boolean
+}
+
+export interface SessionRevocationResponse {
+  message: string
+}
+
 type AuthCallbacks = {
   onTokenRefreshed: (response: AuthResponse) => void
   onAuthExpired: () => void
@@ -135,9 +146,14 @@ export async function refreshSession(): Promise<AuthResponse> {
 }
 
 // Log out and clear the refresh cookie.
-export async function logout(): Promise<void> {
+export async function logout(
+  accessToken?: string | null
+): Promise<void> {
   const response = await fetch(`${API_URL}/logout`, {
     method: "POST",
+    headers: accessToken
+      ? { Authorization: `Bearer ${accessToken}` }
+      : undefined,
     credentials: "include",
   })
 
@@ -277,4 +293,31 @@ export async function changePassword(
   )
 
   return handleResponse<{ message: string }>(response)
+}
+
+export async function getUserSessions(
+  accessToken: string
+): Promise<UserSession[]> {
+  const response = await authenticatedFetch(
+    `${API_URL}/sessions`,
+    {},
+    accessToken
+  )
+
+  return handleResponse<UserSession[]>(response)
+}
+
+export async function revokeUserSession(
+  sessionId: string,
+  accessToken: string
+): Promise<SessionRevocationResponse> {
+  const response = await authenticatedFetch(
+    `${API_URL}/sessions/${encodeURIComponent(sessionId)}`,
+    {
+      method: "DELETE",
+    },
+    accessToken
+  )
+
+  return handleResponse<SessionRevocationResponse>(response)
 }

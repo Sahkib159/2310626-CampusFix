@@ -42,6 +42,18 @@ def get_user_by_id(
     return session.get(User, user_id)
 
 
+def lock_user(
+    session: Session,
+    user_id: UUID,
+) -> User | None:
+    statement = (
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update()
+    )
+    return session.exec(statement).first()
+
+
 def increment_user_token_version(
     session: Session,
     user_id: UUID,
@@ -92,18 +104,35 @@ def get_refresh_session_by_hash(
 def revoke_refresh_session(
     session: Session,
     refresh_session: RefreshSession,
-) -> None:
-    refresh_session.revoked_at = datetime.now(timezone.utc)
-    session.add(refresh_session)
-    session.commit()
+    commit: bool = True,
+) -> bool:
+    revoked_at = datetime.now(timezone.utc)
+    statement = (
+        update(RefreshSession)
+        .where(
+            RefreshSession.id == refresh_session.id,
+            RefreshSession.revoked_at.is_(None),
+        )
+        .values(revoked_at=revoked_at)
+    )
+    result = session.exec(statement)
+    revoked = bool(result.rowcount)
+
+    if revoked:
+        refresh_session.revoked_at = revoked_at
+
+    if commit:
+        session.commit()
+
+    return revoked
 
 
 def revoke_refresh_family(
     session: Session,
     family_id: UUID,
     commit: bool = True,
-) -> None:
-    _revoke_refresh_family(
+) -> bool:
+    revoked = _revoke_refresh_family(
         session,
         family_id,
     )
@@ -111,11 +140,13 @@ def revoke_refresh_family(
     if commit:
         session.commit()
 
+    return revoked
+
 
 def _revoke_refresh_family(
     session: Session,
     family_id: UUID,
-) -> None:
+) -> bool:
     statement = select(RefreshSession).where(
         RefreshSession.family_id == family_id,
         RefreshSession.revoked_at.is_(None),
@@ -127,6 +158,8 @@ def _revoke_refresh_family(
     for refresh_session in refresh_sessions:
         refresh_session.revoked_at = now
         session.add(refresh_session)
+
+    return bool(refresh_sessions)
 
 
 def revoke_user_refresh_sessions(
@@ -164,6 +197,7 @@ def revoke_user_session_family(
     family_id: UUID,
     commit: bool = True,
 ) -> bool:
+    lock_user(session, user_id)
     statement = (
         update(RefreshSession)
         .where(

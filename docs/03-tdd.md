@@ -480,14 +480,20 @@ Configuration shall be supplied through environment variables or an equivalent s
 An example `.env.example` may contain:
 
 ```dotenv
-APP_ENV=development
-DATABASE_URL=sqlite:///./campusfix.db
-FRONTEND_ORIGIN=http://localhost:5173
-SECRET_KEY=replace-with-a-secure-random-value
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+DATABASE_URL=postgresql+psycopg://username:password@localhost:5432/campusfix
+JWT_SECRET_KEY=replace_with_a_random_secret_at_least_32_bytes_long
+PASSWORD_PEPPER=replace_with_a_separate_random_secret_at_least_32_bytes_long
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
+COOKIE_SECURE=true
+COOKIE_SAMESITE=lax
 ```
 
-These values are examples, not production-ready secrets or guaranteed final settings. The actual configuration shall match the selected database driver and authentication implementation.
+These are placeholders, not production-ready secrets. The implementation
+requires `JWT_SECRET_KEY` and `PASSWORD_PEPPER`, limits access-token lifetime
+to 15 minutes, and reads refresh-cookie security settings from the environment.
+The deployed database URL and cookie policy must match the selected database
+driver, HTTPS setup, and frontend origin.
 
 Rules:
 

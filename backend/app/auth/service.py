@@ -53,6 +53,7 @@ def _create_refresh_session(
     session: Session,
     user: User,
     family_id: UUID | None = None,
+    commit: bool = True,
 ) -> str:
     raw_token = generate_refresh_token()
 
@@ -69,7 +70,8 @@ def _create_refresh_session(
     if family_id is None:
         refresh_session.family_id = refresh_session.id
 
-    session.commit()
+    if commit:
+        session.commit()
 
     return raw_token
 
@@ -291,55 +293,79 @@ def refresh_session(
     if stored_session is None:
         raise ValueError("Invalid refresh token.")
 
-    # Reusing a revoked token invalidates the entire login session.
-    if stored_session.revoked_at is not None:
-        repository.revoke_refresh_family(
+    try:
+        user = repository.lock_user(
             session,
-            stored_session.family_id,
+            stored_session.user_id,
         )
-        raise ValueError("Refresh token has been revoked.")
 
-    now = datetime.now(timezone.utc)
+        if user is None:
+            raise ValueError("User account not found.")
 
-    expires_at = stored_session.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        session.refresh(stored_session)
+        session.refresh(user)
 
-    if expires_at <= now:
-        repository.revoke_refresh_family(
+        # Reusing a revoked token invalidates the entire login session.
+        if stored_session.revoked_at is not None:
+            repository.revoke_refresh_family(
+                session,
+                stored_session.family_id,
+                commit=False,
+            )
+            session.commit()
+            raise ValueError("Refresh token has been revoked.")
+
+        now = datetime.now(timezone.utc)
+
+        expires_at = stored_session.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+        if expires_at <= now:
+            repository.revoke_refresh_family(
+                session,
+                stored_session.family_id,
+                commit=False,
+            )
+            session.commit()
+            raise ValueError("Refresh token has expired.")
+
+        if not user.is_active or user.is_banned:
+            repository.revoke_refresh_family(
+                session,
+                stored_session.family_id,
+                commit=False,
+            )
+            session.commit()
+            raise ValueError("This account is inactive or banned.")
+
+        family_id = stored_session.family_id
+
+        # Compare-and-set makes each refresh token usable only once.
+        if not repository.revoke_refresh_session(
             session,
-            stored_session.family_id,
-        )
-        raise ValueError("Refresh token has expired.")
+            stored_session,
+            commit=False,
+        ):
+            repository.revoke_refresh_family(
+                session,
+                family_id,
+                commit=False,
+            )
+            session.commit()
+            raise ValueError("Refresh token has been revoked.")
 
-    user = repository.get_user_by_id(
-        session,
-        stored_session.user_id,
-    )
-
-    if user is None:
-        raise ValueError("User account not found.")
-
-    if not user.is_active or user.is_banned:
-        repository.revoke_refresh_family(
+        new_refresh_token = _create_refresh_session(
             session,
-            stored_session.family_id,
+            user,
+            family_id,
+            commit=False,
         )
-        raise ValueError("This account is inactive or banned.")
+        session.commit()
 
-    family_id = stored_session.family_id
-
-    # Rotate the refresh token: invalidate the old token first.
-    repository.revoke_refresh_session(
-        session,
-        stored_session,
-    )
-
-    new_refresh_token = _create_refresh_session(
-        session,
-        user,
-        family_id,
-    )
+    except SQLAlchemyError:
+        session.rollback()
+        raise
 
     return {
         "response": _build_token_response(user),
@@ -349,35 +375,88 @@ def refresh_session(
 
 def logout(
     session: Session,
-    raw_token: str,
+    raw_token: str | None,
+    authenticated_user: User | None = None,
 ) -> User | None:
-    stored_session = repository.get_refresh_session_by_hash(
-        session,
-        hash_refresh_token(raw_token),
-    )
+    stored_session = None
+    if raw_token:
+        stored_session = repository.get_refresh_session_by_hash(
+            session,
+            hash_refresh_token(raw_token),
+        )
 
-    if stored_session is None:
+    cookie_user = None
+    if stored_session is not None:
+        cookie_user = repository.get_user_by_id(
+            session,
+            stored_session.user_id,
+        )
+
+    user = authenticated_user or cookie_user
+    if user is None:
         return None
 
-    # Retrieve the user before revoking the refresh-token family.
-    user = repository.get_user_by_id(
-        session,
-        stored_session.user_id,
-    )
-
     try:
-        if user is not None:
-            repository.increment_user_token_version(
+        user = repository.lock_user(
+            session,
+            user.id,
+        )
+        if user is None:
+            session.rollback()
+            return None
+
+        if stored_session is not None:
+            session.refresh(stored_session)
+            cookie_user = repository.get_user_by_id(
+                session,
+                stored_session.user_id,
+            )
+
+        family_id = None
+        if (
+            stored_session is not None
+            and cookie_user is not None
+            and cookie_user.id == user.id
+        ):
+            family_id = stored_session.family_id
+
+        family_revoked_before_logout = False
+        if (
+            authenticated_user is None
+            and stored_session is not None
+            and stored_session.revoked_at is not None
+            and family_id is not None
+        ):
+            family_revoked_before_logout = (
+                repository.revoke_refresh_family(
+                    session,
+                    family_id,
+                    commit=False,
+                )
+            )
+
+            if not family_revoked_before_logout:
+                session.rollback()
+                return user
+
+        repository.increment_user_token_version(
+            session,
+            user.id,
+        )
+
+        if family_id is not None:
+            if not family_revoked_before_logout:
+                repository.revoke_refresh_family(
+                    session,
+                    family_id,
+                    commit=False,
+                )
+        else:
+            repository.revoke_user_refresh_sessions(
                 session,
                 user.id,
             )
 
-        # Logout invalidates the complete login session.
-        repository.revoke_refresh_family(
-            session,
-            stored_session.family_id,
-            commit=False,
-        )
         session.commit()
 
     except SQLAlchemyError:

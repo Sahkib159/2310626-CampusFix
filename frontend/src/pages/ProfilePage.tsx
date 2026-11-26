@@ -1,14 +1,28 @@
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { useNavigate } from "react-router"
-
 import Header from "../components/Header"
 import { useAuth } from "../contexts/AuthContext"
 
 import {
+  getUserSessions,
+  revokeUserSession,
   updateProfile,
   changePassword,
+  type UserSession,
 } from "../services/auth"
+
+function formatSessionDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString()
+}
+
+function isSessionActive(session: UserSession): boolean {
+  return (
+    !session.revoked &&
+    new Date(session.expires_at).getTime() > Date.now()
+  )
+}
 
 export default function ProfilePage() {
   const { user, accessToken, updateUser, logout } = useAuth()
@@ -29,6 +43,102 @@ export default function ProfilePage() {
   const [profileMessage, setProfileMessage] = useState("")
   const [passwordError, setPasswordError] = useState("")
   const [passwordMessage, setPasswordMessage] = useState("")
+  const [sessions, setSessions] = useState<UserSession[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(true)
+  const [sessionsError, setSessionsError] = useState("")
+  const [sessionsMessage, setSessionsMessage] = useState("")
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!accessToken) {
+      setSessions([])
+      setSessionsError("Your session has expired. Please log in again.")
+      setSessionsLoading(false)
+      return
+    }
+
+    setSessionsLoading(true)
+    setSessions([])
+    setSessionsError("")
+    setSessionsMessage("")
+
+    getUserSessions(accessToken)
+      .then((userSessions) => {
+        if (!cancelled) {
+          setSessions(userSessions)
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setSessionsError(
+            err instanceof Error
+              ? err.message
+              : "Could not load your sessions."
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSessionsLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken])
+
+  async function handleRevokeSession(session: UserSession) {
+    if (
+      !accessToken ||
+      !isSessionActive(session) ||
+      revokingSessionId !== null
+    ) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Revoke the session created ${formatSessionDate(session.created_at)}?`
+    )
+    if (!confirmed) return
+
+    setSessionsError("")
+    setSessionsMessage("")
+    setRevokingSessionId(session.id)
+
+    try {
+      const result = await revokeUserSession(session.id, accessToken)
+      setSessionsMessage(result.message)
+      setSessionsLoading(true)
+
+      try {
+        setSessions(await getUserSessions(accessToken))
+      } catch (err) {
+        setSessions((currentSessions) =>
+          currentSessions.map((currentSession) =>
+            currentSession.id === session.id
+              ? { ...currentSession, revoked: true }
+              : currentSession
+          )
+        )
+        setSessionsError(
+          `The session was revoked, but the list could not be refreshed: ${
+            err instanceof Error ? err.message : "Please try again."
+          }`
+        )
+      } finally {
+        setSessionsLoading(false)
+      }
+    } catch (err) {
+      setSessionsError(
+        err instanceof Error ? err.message : "Could not revoke the session."
+      )
+    } finally {
+      setRevokingSessionId(null)
+    }
+  }
 
   async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -318,6 +428,94 @@ export default function ProfilePage() {
             </form>
           </section>
         </div>
+
+        <section className="panel profile-card profile-sessions-card">
+          <div className="profile-card-heading">
+            <h3>Active Sessions</h3>
+            <p>
+              Review your login sessions and revoke any session you no longer
+              recognize.
+            </p>
+          </div>
+
+          {sessionsError && (
+            <p className="error-message" role="alert">
+              {sessionsError}
+            </p>
+          )}
+
+          {sessionsMessage && (
+            <p className="success-message" role="status">
+              {sessionsMessage}
+            </p>
+          )}
+
+          {sessionsLoading ? (
+            <p role="status">Loading sessions...</p>
+          ) : sessionsError && sessions.length === 0 ? (
+            null
+          ) : sessions.length === 0 ? (
+            <p className="profile-session-empty">
+              No sessions found for your account.
+            </p>
+          ) : (
+            <div className="profile-session-list">
+              {sessions.map((session) => {
+                const active = isSessionActive(session)
+                const status = session.revoked
+                  ? "Revoked"
+                  : active
+                    ? "Active"
+                    : "Expired"
+
+                return (
+                  <article
+                    key={session.id}
+                    className="profile-session-item"
+                  >
+                    <div className="profile-session-details">
+                      <div className="profile-session-field">
+                        <span>Created</span>
+                        <strong>
+                          {formatSessionDate(session.created_at)}
+                        </strong>
+                      </div>
+
+                      <div className="profile-session-field">
+                        <span>Expires</span>
+                        <strong>
+                          {formatSessionDate(session.expires_at)}
+                        </strong>
+                      </div>
+
+                      <div className="profile-session-field">
+                        <span>Status</span>
+                        <strong
+                          className={`profile-session-status ${status.toLowerCase()}`}
+                        >
+                          {status}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {active && (
+                      <button
+                        type="button"
+                        className="delete-button profile-session-revoke"
+                        disabled={revokingSessionId !== null}
+                        onClick={() => void handleRevokeSession(session)}
+                      >
+                        {revokingSessionId === session.id
+                          ? "Revoking..."
+                          : "Revoke"}
+                      </button>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </section>
       </section>
     </main>
   )
