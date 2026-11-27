@@ -582,6 +582,12 @@ def change_user_role(
             detail="You cannot change your own role.",
         )
 
+    if target.role == "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrators cannot change another administrator's role.",
+        )
+
     clean_role = new_role.strip().upper()
 
     if clean_role not in VALID_ROLES:
