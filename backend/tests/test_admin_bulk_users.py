@@ -1079,6 +1079,55 @@ class AdminBulkUserTests(unittest.TestCase):
         self.assertEqual(len(logs), 1)
         self.assertEqual(logs[0].target_user_id, self.banned_id)
 
+    def test_role_change_rejects_another_admin(self):
+        response = self.client.patch(
+            f"/api/admin/users/{self.other_admin_id}/role",
+            json={"role": "STUDENT"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()["detail"],
+            "Administrators cannot change another administrator's role.",
+        )
+        self.assertEqual(
+            self.get_user(self.other_admin_id).role,
+            "ADMIN",
+        )
+
+    def test_role_change_can_promote_student_to_staff(self):
+        response = self.client.patch(
+            f"/api/admin/users/{self.student_a_id}/role",
+            json={"role": "STAFF"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["role"], "STAFF")
+        self.assertEqual(self.get_user(self.student_a_id).role, "STAFF")
+
+    def test_role_change_can_change_staff_to_student(self):
+        response = self.client.patch(
+            f"/api/admin/users/{self.staff_id}/role",
+            json={"role": "STUDENT"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["role"], "STUDENT")
+        self.assertEqual(self.get_user(self.staff_id).role, "STUDENT")
+
+    def test_role_change_still_rejects_self(self):
+        response = self.client.patch(
+            f"/api/admin/users/{self.admin_id}/role",
+            json={"role": "STUDENT"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["detail"],
+            "You cannot change your own role.",
+        )
+        self.assertEqual(self.get_user(self.admin_id).role, "ADMIN")
+
     def test_individual_ban_protects_self_and_other_admin(self):
         protected_targets = (
             (self.admin_id, 400),
