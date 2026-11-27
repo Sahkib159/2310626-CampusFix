@@ -1,5 +1,5 @@
 
-import type { FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import { Link } from "react-router"
 
 import type {
@@ -58,6 +58,18 @@ export default function RequestList({
   onAssignStaff,
   onUnassignStaff,
 }: RequestListProps) {
+  const [searchTerm, setSearchTerm] = useState("")
+  const normalizedSearch = searchTerm.trim().toLowerCase()
+  const matchingRequests = requests.filter((request) => {
+    if (!normalizedSearch) return true
+
+    return (
+      request.title.toLowerCase().includes(normalizedSearch) ||
+      request.description.toLowerCase().includes(normalizedSearch) ||
+      String(request.id).includes(normalizedSearch)
+    )
+  })
+
   return (
     <section className="panel requests-panel">
       <div className="section-heading">
@@ -70,8 +82,35 @@ export default function RequestList({
         </div>
 
         <span className="request-count">
-          {requests.length} total
+          {normalizedSearch
+            ? `${matchingRequests.length} of ${requests.length} shown`
+            : `${requests.length} total`}
         </span>
+      </div>
+
+      <div className="request-search">
+        <label htmlFor="service-request-search">
+          Search service requests
+        </label>
+
+        <div className="request-search-controls">
+          <input
+            id="service-request-search"
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search by title, description, or request ID"
+          />
+
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={!searchTerm}
+            onClick={() => setSearchTerm("")}
+          >
+            Clear search
+          </button>
+        </div>
       </div>
 
       {error && <p className="error-message">{error}</p>}
@@ -84,9 +123,13 @@ export default function RequestList({
         <p className="empty-state">
           No service requests yet.
         </p>
+      ) : matchingRequests.length === 0 ? (
+        <p className="empty-state">
+          No matching service requests found.
+        </p>
       ) : (
         <div className="request-list">
-          {requests.map((request) => {
+          {matchingRequests.map((request) => {
             const assignedTo = (
               request as ServiceRequest & {
                 assigned_to?: string | null
